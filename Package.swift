@@ -5,11 +5,15 @@ import PackageDescription
 
 let package = Package(
     name: "SunMoonCalc",
+    platforms: [
+        .macOS(.v10_12),
+    ],
     products: [
         // Products define the executables and libraries a package produces, and make them visible to other packages.
         .library(
             name: "SunMoonCalc",
-            targets: ["SunMoonCalc"]),
+            targets: ["SunMoonCalc"]
+        ),
     ],
     dependencies: [
         // Dependencies declare other packages that this package depends on.
@@ -20,9 +24,11 @@ let package = Package(
         // Targets can depend on other targets in this package, and on products in packages this package depends on.
         .target(
             name: "SunMoonCalc",
-            dependencies: []),
+            dependencies: []
+        ),
         .testTarget(
             name: "SunMoonCalcTests",
-            dependencies: ["SunMoonCalc"]),
+            dependencies: ["SunMoonCalc"]
+        ),
     ]
 )
