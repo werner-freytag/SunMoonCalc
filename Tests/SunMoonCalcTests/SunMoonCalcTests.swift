@@ -7,7 +7,7 @@ final class SunMoonCalcTests: XCTestCase {
         dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss Z"
         return dateFormatter
     }()
-    
+
     func testCalculation() {
         let date = dateFormatter.date(from: "2021-02-26 00:00:00 +0000")!
         let result = try! calcSunAndMoon(date: date, latitude: 48.137154, longitude: 11.576124)

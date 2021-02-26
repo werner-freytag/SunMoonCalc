@@ -75,199 +75,135 @@ public enum Errors: Error {
 /// - Throws: invalidJulianDay if the date does not exists
 /// - Returns: Sun and moon information
 public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twilight: Twilight = .Horizon34arcmin) throws -> (sun: Sun, moon: Moon) {
-    let c = try SunMoonCalculator(date: date, longitude: longitude, latitude: latitude, twilight: twilight)
-    c.calcSunAndMoon()
+    if longitude.isNaN || latitude.isNaN || abs(longitude) > 180 || abs(latitude) > 90 {
+        throw Errors.invalidLocation(longitude: longitude, latitude: latitude)
+    }
 
-    return (
-        sun: Sun(ephemeris: Ephemeris(azimuth: Measurement(value: c.sunAzimuth, unit: .radians), elevation: Measurement(value: c.sunElevation, unit: .radians), rise: Date(julianDay: c.sunRise)!, set: Date(julianDay: c.sunSet)!, transit: Date(julianDay: c.sunTransit)!, transitElevation: Measurement(value: c.sunTransitElevation, unit: .radians), distance: Measurement(value: c.sunDistance, unit: .astronomicalUnits))),
-        moon: Moon(ephemeris: Ephemeris(azimuth: Measurement(value: c.moonAzimuth, unit: .radians), elevation: Measurement(value: c.moonElevation, unit: .radians), rise: Date(julianDay: c.moonRise)!, set: Date(julianDay: c.moonSet)!, transit: Date(julianDay: c.moonTransit)!, transitElevation: Measurement(value: c.moonTransitElevation, unit: .radians), distance: Measurement(value: c.moonDistance, unit: .astronomicalUnits)), age: c.moonAge, illumination: c.moonIllumination, positionAngleOfAxis: Measurement(value: c.moonP, unit: .radians), brightLimbAngle: Measurement(value: c.moonBL, unit: .radians), paralacticAngle: Measurement(value: c.moonPar, unit: .radians))
-    )
-}
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(abbreviation: "UTC")!
+    let dc: DateComponents = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: date),
+        year: Int = dc.year!,
+        month: Int = dc.month!,
+        day: Int = dc.day!,
+        h: Int = dc.hour!,
+        m: Int = dc.minute!,
+        s: Int = dc.second!
 
-public struct Sun: Equatable {
-    let ephemeris: Ephemeris
-}
+    // The conversion formulas are from Meeus, chapter 7.
+    var julian: Bool = false
+    if year < 1582 || (year == 1582 && month <= 10) || (year == 1582 && month == 10 && day < 15) {
+        julian = true
+    }
+    let D: Int = day
+    var M: Int = month,
+        Y: Int = year
+    if M < 3 {
+        Y -= 1
+        M += 12
+    }
+    let A: Int = Y / 100,
+        B: Int = julian ? 0 : 2 - A + A / 4,
+        dayFraction: Double = (Double(h) + (Double(m) + (Double(s) / 60)) / 60) / 24,
+        jd: Double = dayFraction + Double(Int(365.25 * Double(Y + 4716)) + Int(30.6001 * Double(M + 1))) + Double(D + B) - 1524.5
 
-public struct Moon: Equatable {
-    let ephemeris: Ephemeris
+    try validateJulianDay(jd)
 
-    /// Age (days: 0-29.5)
-    let age: Double
+    let TTminusUT: Double = {
+        guard year > -600, year < 2200 else { return 0 }
+        
+        let x = Double(year) + (Double(month) - 1 + Double(day) / 30) / 12
+        let x2: Double = x * x, x3: Double = x2 * x, x4: Double = x3 * x
+        if year < 1600 {
+            return 10535.328003326353 - 9.995238627481024 * x + 0.003067307630020489 * x2 - 7.76340698361363e-6 * x3 + 3.1331045394223196e-9 * x4 +
+                8.225530854405553e-12 * x2 * x3 - 7.486164715632051e-15 * x4 * x2 + 1.9362461549678834e-18 * x4 * x3 - 8.489224937827653e-23 * x4 * x4
+        }
+        
+        return -1_027_175.3477559977 + 2523.256625418965 * x - 1.885686849058459 * x2 + 5.869246227888417e-5 * x3 + 3.3379295816475025e-7 * x4 +
+                1.7758961671447929e-10 * x2 * x3 - 2.7889902806153024e-13 * x2 * x4 + 1.0224295822336825e-16 * x3 * x4 - 1.2528102370680435e-20 * x4 * x4
+    }()
 
-    /// Illumination (percentage)
-    let illumination: Double
+    /// INPUT VARIABLES
+    
+    var jd_UT: Double = 0
+    var t: Double = 0
+    let obsLon : Double = toRadians(longitude)
+    let obsLat: Double = toRadians(latitude)
+    var slongitude: Double = 0
+    var sanomaly: Double = 0
 
-    /// Position angle of axis (radians)
-    let positionAngleOfAxis: Measurement<UnitAngle>
+    setUTDate(jd)
 
-    /// Bright limb angle (radians)
-    let brightLimbAngle: Measurement<UnitAngle>
+    
+    /// OUTPUT VARIABLES
+    
+    /// Sun azimuth (radians)
+    var sunAzimuth: Double = .nan
 
-    /// Paralactic angle (radians)
-    let paralacticAngle: Measurement<UnitAngle>
-}
+    /// Sun elevation (radians)
+    var sunElevation: Double = .nan
 
-public struct Ephemeris: Equatable {
-    /// Azimuth (radians)
-    let azimuth: Measurement<UnitAngle>
+    /// Sun rise (Julian days as per UTC)
+    var sunRise: Double = .nan
 
-    /// Elevation (radians)
-    let elevation: Measurement<UnitAngle>
+    /// Sun set (Julian days as per UTC)
+    var sunSet: Double = .nan
 
-    /// Rise (Julian days as per UTC)
-    let rise: Date
+    /// Sun transit (Julian days as per UTC)
+    var sunTransit: Double = .nan
 
-    /// Set (Date per UTC)
-    let set: Date
-
-    /// Transit (Date per UTC)
-    let transit: Date
-
-    /// Transit elevation (radians)
-    let transitElevation: Measurement<UnitAngle>
+    /// Sun transit elevation (radians)
+    var sunTransitElevation: Double = .nan
 
     /// Sun distance (AUs)
-    let distance: Measurement<UnitLength>
-}
+    var sunDistance: Double = .nan
 
-/// A very simple Sun/Moon calculator without using JPARSEC library
-/// - note: Swift port of the excellent [ephemerides (in Java)](http://conga.oan.es/~alonso/doku.php?id=blog:sun_moon_position) by Tomás Alonso Albi
-class SunMoonCalculator {
-    /// Create instance of Sun/Moon Calculator
-    /// - Parameters:
-    ///   - date: The date/time of observations (local timezone)
-    ///   - longitude: Longitude of observation (degrees)
-    ///   - latitude: Latitude of observation (degrees)
-    ///   - twilight: Twilight type
-    /// - Throws: invalidJulianDay if the date does not exists
-    init(date: Date, longitude: Double, latitude: Double, twilight: Twilight = .Horizon34arcmin) throws {
-        if longitude.isNaN || latitude.isNaN || abs(longitude) > 180 || abs(latitude) > 90 {
-            throw Errors.invalidLocation(longitude: longitude, latitude: latitude)
-        }
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(abbreviation: "UTC")!
-        let dc: DateComponents = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: date),
-            year: Int = dc.year!,
-            month: Int = dc.month!,
-            day: Int = dc.day!,
-            h: Int = dc.hour!,
-            m: Int = dc.minute!,
-            s: Int = dc.second!
+    /// Moon azimuth (radians)
+    var moonAzimuth: Double = .nan
 
-        // The conversion formulas are from Meeus, chapter 7.
-        var julian: Bool = false
-        if year < 1582 || (year == 1582 && month <= 10) || (year == 1582 && month == 10 && day < 15) {
-            julian = true
-        }
-        let D: Int = day
-        var M: Int = month,
-            Y: Int = year
-        if M < 3 {
-            Y -= 1
-            M += 12
-        }
-        let A: Int = Y / 100,
-            B: Int = julian ? 0 : 2 - A + A / 4,
-            dayFraction: Double = (Double(h) + (Double(m) + (Double(s) / 60)) / 60) / 24,
-            jd: Double = dayFraction + Double(Int(365.25 * Double(Y + 4716)) + Int(30.6001 * Double(M + 1))) + Double(D + B) - 1524.5
+    /// Moon elevation (radians)
+    var moonElevation: Double = .nan
 
-        try validateJulianDay(jd)
+    /// Moon rise (Julian days as per UTC)
+    var moonRise: Double = .nan
 
-        TTminusUT = 0
-        if year > -600, year < 2200 {
-            let x = Double(year) + (Double(month) - 1 + Double(day) / 30) / 12
-            let x2: Double = x * x, x3: Double = x2 * x, x4: Double = x3 * x
-            if year < 1600 {
-                TTminusUT = 10535.328003326353 - 9.995238627481024 * x + 0.003067307630020489 * x2 - 7.76340698361363e-6 * x3 + 3.1331045394223196e-9 * x4 +
-                    8.225530854405553e-12 * x2 * x3 - 7.486164715632051e-15 * x4 * x2 + 1.9362461549678834e-18 * x4 * x3 - 8.489224937827653e-23 * x4 * x4
-            } else {
-                TTminusUT = -1_027_175.3477559977 + 2523.256625418965 * x - 1.885686849058459 * x2 + 5.869246227888417e-5 * x3 + 3.3379295816475025e-7 * x4 +
-                    1.7758961671447929e-10 * x2 * x3 - 2.7889902806153024e-13 * x2 * x4 + 1.0224295822336825e-16 * x3 * x4 - 1.2528102370680435e-20 * x4 * x4
-            }
-        }
-        obsLon = toRadians(longitude)
-        obsLat = toRadians(latitude)
-        self.twilight = twilight
-        setUTDate(jd)
-    }
+    /// Moon set (Julian days as per UTC)
+    var moonSet: Double = .nan
 
-    /// Calculates everything for the Sun and the Moon
-    func calcSunAndMoon() {
-        let jd: Double = jd_UT
+    /// Moon transit (Julian days as per UTC)
+    var moonTransit: Double = .nan
 
-        // First the Sun
-        var out: [Double] = doCalc(getSun())
-        sunAzimuth = out[0]
-        sunElevation = out[1]
-        sunRise = out[2]
-        sunSet = out[3]
-        sunTransit = out[4]
-        sunTransitElevation = out[5]
-        let sunRA: Double = out[6], sunDec: Double = out[7]
-        sunDistance = out[8]
-        let sa: Double = sanomaly, sl: Double = slongitude, lst: Double = out[9]
+    /// Moon transit elevation (radians)
+    var moonTransitElevation: Double = .nan
 
-        var niter: Int = 3 // Number of iterations to get accurate rise/set/transit times
-        sunRise = obtainAccurateRiseSetTransit(riseSetJD: sunRise, index: 2, niter: niter, sun: true)
-        sunSet = obtainAccurateRiseSetTransit(riseSetJD: sunSet, index: 3, niter: niter, sun: true)
-        sunTransit = obtainAccurateRiseSetTransit(riseSetJD: sunTransit, index: 4, niter: niter, sun: true)
-        if sunTransit == -1 {
-            sunTransitElevation = 0
-        } else {
-            // Update Sun's maximum elevation
-            setUTDate(sunTransit)
-            out = doCalc(getSun())
-            sunTransitElevation = out[5]
-        }
+    /// Moon distance (AUs)
+    var moonDistance: Double = .nan
 
-        // Now Moon
-        setUTDate(jd)
-        sanomaly = sa
-        slongitude = sl
-        out = doCalc(getMoon())
-        moonAzimuth = out[0]
-        moonElevation = out[1]
-        moonRise = out[2]
-        moonSet = out[3]
-        moonTransit = out[4]
-        moonTransitElevation = out[5]
-        let moonRA = out[6],
-            moonDec = out[7]
-        moonDistance = out[8]
-        moonIllumination = (1 - cos(acos(sin(sunDec) * sin(moonDec) + cos(sunDec) * cos(moonDec) * cos(moonRA - sunRA)))) * 0.5
-        let ma: Double = moonAge
+    /// Moon age (days: 0-29.5)
+    var moonAge: Double = .nan
 
-        niter = 5 // Number of iterations to get accurate rise/set/transit times
-        moonRise = obtainAccurateRiseSetTransit(riseSetJD: moonRise, index: 2, niter: niter, sun: false)
-        moonSet = obtainAccurateRiseSetTransit(riseSetJD: moonSet, index: 3, niter: niter, sun: false)
-        moonTransit = obtainAccurateRiseSetTransit(riseSetJD: moonTransit, index: 4, niter: niter, sun: false)
-        if moonTransit == -1 {
-            moonTransitElevation = 0
-        } else {
-            // Update Moon's maximum elevation
-            setUTDate(moonTransit)
-            _ = getSun()
-            out = doCalc(getMoon())
-            moonTransitElevation = out[5]
-        }
-        setUTDate(jd)
-        sanomaly = sa
-        slongitude = sl
-        moonAge = ma
+    /// Moon illumination (percentage)
+    var moonIllumination: Double = .nan
 
-        out = getMoonDiskOrientationAngles(lst: lst, sunRA: sunRA, sunDec: sunDec,
-                                           moonLon: toRadians(moonAzimuth), moonLat: toRadians(moonElevation), moonRA: moonRA, moonDec: moonDec)
-        moonP = out[2]
-        moonBL = out[3]
-        moonPar = out[4]
-    }
+    /// Moon position angle of axis (radians)
+    var moonP: Double = .nan
 
-    private func setUTDate(_ jd: Double) {
+    /// Moon bright limb angle (radians)
+    var moonBL: Double = .nan
+
+    /// Moon paralactic angle (radians)
+    var moonPar: Double = .nan
+
+    
+    
+    
+
+    
+    func setUTDate(_ jd: Double) {
         jd_UT = jd
         t = (jd + TTminusUT / SECONDS_PER_DAY - J2000) / JULIAN_DAYS_PER_CENTURY
     }
 
-    private func getSun() -> [Double] {
+    func getSun() -> [Double] {
         // SUN PARAMETERS (Formulae from "Calendrical Calculations")
         let lon: Double = (280.46645 + 36000.76983 * t + 0.0003032 * t * t),
             anom: Double = (357.5291 + 35999.0503 * t - 0.0001559 * t * t - 4.8e-07 * t * t * t)
@@ -288,7 +224,7 @@ class SunMoonCalculator {
         return [slongitude, slatitude, sdistance, atan(696_000 / (AU * sdistance))]
     }
 
-    private func getMoon() -> [Double] {
+    func getMoon() -> [Double] {
         // MOON PARAMETERS (Formulae from "Calendrical Calculations")
         let phase: Double = normalizeRadians(toRadians(297.8502042 + 445_267.1115168 * t - 0.00163 * t * t + t * t * t / 538_841 - t * t * t * t / 65_194_000))
 
@@ -357,7 +293,7 @@ class SunMoonCalculator {
         return [longitude, latitude, distance * EARTH_RADIUS / AU, atan(1737.4 / (distance * EARTH_RADIUS))]
     }
 
-    private func doCalc(_ pos: [Double]) -> [Double] {
+    func doCalc(_ pos: [Double]) -> [Double] {
         var pos: [Double] = pos
         // Ecliptic to equatorial coordinates
         let t2: Double = t / 100
@@ -504,7 +440,7 @@ class SunMoonCalculator {
         return [azi, alt, rise, set, transit, transit_alt, ra, dec, dist, lst]
     }
 
-    private func obtainAccurateRiseSetTransit(riseSetJD: Double, index: Int, niter: Int, sun: Bool) -> Double {
+    func obtainAccurateRiseSetTransit(riseSetJD: Double, index: Int, niter: Int, sun: Bool) -> Double {
         var riseSetJD: Double = riseSetJD,
             step: Double = -1
         for _ in 0 ..< niter {
@@ -530,7 +466,7 @@ class SunMoonCalculator {
 
     /// Method to calculate values of Moon Disk
     /// - Returns: [optical librations (lp), lunar coordinates of the centre of the disk (bp), position angle of axis (p), bright limb angle (bl), paralactic angle (par)]
-    private func getMoonDiskOrientationAngles(lst: Double, sunRA: Double, sunDec: Double,
+    func getMoonDiskOrientationAngles(lst: Double, sunRA: Double, sunDec: Double,
                                               moonLon: Double, moonLat: Double, moonRA: Double, moonDec: Double) -> [Double] {
         // Moon's argument of latitude
         let F: Double = toRadians(93.2720993 + 483_202.0175273 * t - 0.0034029 * t * t
@@ -570,73 +506,125 @@ class SunMoonCalculator {
 
         return [lp, bp, p, bl, par]
     }
+    
+    
+    
+    // First the Sun
+    var out: [Double] = doCalc(getSun())
+    sunAzimuth = out[0]
+    sunElevation = out[1]
+    sunRise = out[2]
+    sunSet = out[3]
+    sunTransit = out[4]
+    sunTransitElevation = out[5]
+    let sunRA: Double = out[6], sunDec: Double = out[7]
+    sunDistance = out[8]
+    let sa: Double = sanomaly, sl: Double = slongitude, lst: Double = out[9]
 
-    /// Input values
-    private var jd_UT: Double = 0,
-                t: Double = 0,
-                obsLon: Double = 0,
-                obsLat: Double = 0,
-                TTminusUT: Double = 0,
-                twilight: Twilight = .Horizon34arcmin,
-                slongitude: Double = 0,
-                sanomaly: Double = 0
+    var niter: Int = 3 // Number of iterations to get accurate rise/set/transit times
+    sunRise = obtainAccurateRiseSetTransit(riseSetJD: sunRise, index: 2, niter: niter, sun: true)
+    sunSet = obtainAccurateRiseSetTransit(riseSetJD: sunSet, index: 3, niter: niter, sun: true)
+    sunTransit = obtainAccurateRiseSetTransit(riseSetJD: sunTransit, index: 4, niter: niter, sun: true)
+    if sunTransit == -1 {
+        sunTransitElevation = 0
+    } else {
+        // Update Sun's maximum elevation
+        setUTDate(sunTransit)
+        out = doCalc(getSun())
+        sunTransitElevation = out[5]
+    }
 
-    /// Sun azimuth (radians)
-    private(set) var sunAzimuth: Double = .nan
+    // Now Moon
+    setUTDate(jd)
+    sanomaly = sa
+    slongitude = sl
+    out = doCalc(getMoon())
+    moonAzimuth = out[0]
+    moonElevation = out[1]
+    moonRise = out[2]
+    moonSet = out[3]
+    moonTransit = out[4]
+    moonTransitElevation = out[5]
+    let moonRA = out[6],
+        moonDec = out[7]
+    moonDistance = out[8]
+    moonIllumination = (1 - cos(acos(sin(sunDec) * sin(moonDec) + cos(sunDec) * cos(moonDec) * cos(moonRA - sunRA)))) * 0.5
+    let ma: Double = moonAge
 
-    /// Sun elevation (radians)
-    private(set) var sunElevation: Double = .nan
+    niter = 5 // Number of iterations to get accurate rise/set/transit times
+    moonRise = obtainAccurateRiseSetTransit(riseSetJD: moonRise, index: 2, niter: niter, sun: false)
+    moonSet = obtainAccurateRiseSetTransit(riseSetJD: moonSet, index: 3, niter: niter, sun: false)
+    moonTransit = obtainAccurateRiseSetTransit(riseSetJD: moonTransit, index: 4, niter: niter, sun: false)
+    if moonTransit == -1 {
+        moonTransitElevation = 0
+    } else {
+        // Update Moon's maximum elevation
+        setUTDate(moonTransit)
+        _ = getSun()
+        out = doCalc(getMoon())
+        moonTransitElevation = out[5]
+    }
+    setUTDate(jd)
+    sanomaly = sa
+    slongitude = sl
+    moonAge = ma
 
-    /// Sun rise (Julian days as per UTC)
-    private(set) var sunRise: Double = .nan
+    out = getMoonDiskOrientationAngles(lst: lst, sunRA: sunRA, sunDec: sunDec,
+                                       moonLon: toRadians(moonAzimuth), moonLat: toRadians(moonElevation), moonRA: moonRA, moonDec: moonDec)
+    moonP = out[2]
+    moonBL = out[3]
+    moonPar = out[4]
+    
+    return (
+        sun: Sun(ephemeris: Ephemeris(azimuth: Measurement(value: sunAzimuth, unit: .radians), elevation: Measurement(value: sunElevation, unit: .radians), rise: Date(julianDay: sunRise)!, set: Date(julianDay: sunSet)!, transit: Date(julianDay: sunTransit)!, transitElevation: Measurement(value: sunTransitElevation, unit: .radians), distance: Measurement(value: sunDistance, unit: .astronomicalUnits))),
+        moon: Moon(ephemeris: Ephemeris(azimuth: Measurement(value: moonAzimuth, unit: .radians), elevation: Measurement(value: moonElevation, unit: .radians), rise: Date(julianDay: moonRise)!, set: Date(julianDay: moonSet)!, transit: Date(julianDay: moonTransit)!, transitElevation: Measurement(value: moonTransitElevation, unit: .radians), distance: Measurement(value: moonDistance, unit: .astronomicalUnits)), age: moonAge, illumination: moonIllumination, positionAngleOfAxis: Measurement(value: moonP, unit: .radians), brightLimbAngle: Measurement(value: moonBL, unit: .radians), paralacticAngle: Measurement(value: moonPar, unit: .radians))
+    )
+}
 
-    /// Sun set (Julian days as per UTC)
-    private(set) var sunSet: Double = .nan
+public struct Sun: Equatable {
+    let ephemeris: Ephemeris
+}
 
-    /// Sun transit (Julian days as per UTC)
-    private(set) var sunTransit: Double = .nan
+public struct Moon: Equatable {
+    let ephemeris: Ephemeris
 
-    /// Sun transit elevation (radians)
-    private(set) var sunTransitElevation: Double = .nan
+    /// Age (days: 0-29.5)
+    let age: Double
+
+    /// Illumination (percentage)
+    let illumination: Double
+
+    /// Position angle of axis (radians)
+    let positionAngleOfAxis: Measurement<UnitAngle>
+
+    /// Bright limb angle (radians)
+    let brightLimbAngle: Measurement<UnitAngle>
+
+    /// Paralactic angle (radians)
+    let paralacticAngle: Measurement<UnitAngle>
+}
+
+public struct Ephemeris: Equatable {
+    /// Azimuth (radians)
+    let azimuth: Measurement<UnitAngle>
+
+    /// Elevation (radians)
+    let elevation: Measurement<UnitAngle>
+
+    /// Rise (Julian days as per UTC)
+    let rise: Date
+
+    /// Set (Date per UTC)
+    let set: Date
+
+    /// Transit (Date per UTC)
+    let transit: Date
+
+    /// Transit elevation (radians)
+    let transitElevation: Measurement<UnitAngle>
 
     /// Sun distance (AUs)
-    private(set) var sunDistance: Double = .nan
-
-    /// Moon azimuth (radians)
-    private(set) var moonAzimuth: Double = .nan
-
-    /// Moon elevation (radians)
-    private(set) var moonElevation: Double = .nan
-
-    /// Moon rise (Julian days as per UTC)
-    private(set) var moonRise: Double = .nan
-
-    /// Moon set (Julian days as per UTC)
-    private(set) var moonSet: Double = .nan
-
-    /// Moon transit (Julian days as per UTC)
-    private(set) var moonTransit: Double = .nan
-
-    /// Moon transit elevation (radians)
-    private(set) var moonTransitElevation: Double = .nan
-
-    /// Moon distance (AUs)
-    private(set) var moonDistance: Double = .nan
-
-    /// Moon age (days: 0-29.5)
-    private(set) var moonAge: Double = .nan
-
-    /// Moon illumination (percentage)
-    private(set) var moonIllumination: Double = .nan
-
-    /// Moon position angle of axis (radians)
-    private(set) var moonP: Double = .nan
-
-    /// Moon bright limb angle (radians)
-    private(set) var moonBL: Double = .nan
-
-    /// Moon paralactic angle (radians)
-    private(set) var moonPar: Double = .nan
+    let distance: Measurement<UnitLength>
 }
 
 ///  Transforms a Julian day (rise/set/transit fields) to a Date
