@@ -79,48 +79,7 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
         throw Errors.invalidLocation(longitude: longitude, latitude: latitude)
     }
 
-    var calendar = Calendar(identifier: .gregorian)
-    calendar.timeZone = TimeZone(abbreviation: "UTC")!
-    let dc: DateComponents = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: date),
-        year: Int = dc.year!,
-        month: Int = dc.month!,
-        day: Int = dc.day!,
-        h: Int = dc.hour!,
-        m: Int = dc.minute!,
-        s: Int = dc.second!
-
-    // The conversion formulas are from Meeus, chapter 7.
-    var julian: Bool = false
-    if year < 1582 || (year == 1582 && month <= 10) || (year == 1582 && month == 10 && day < 15) {
-        julian = true
-    }
-    let D: Int = day
-    var M: Int = month,
-        Y: Int = year
-    if M < 3 {
-        Y -= 1
-        M += 12
-    }
-    let A: Int = Y / 100,
-        B: Int = julian ? 0 : 2 - A + A / 4,
-        dayFraction: Double = (Double(h) + (Double(m) + (Double(s) / 60)) / 60) / 24,
-        jd: Double = dayFraction + Double(Int(365.25 * Double(Y + 4716)) + Int(30.6001 * Double(M + 1))) + Double(D + B) - 1524.5
-
-    try validateJulianDay(jd)
-
-    let TTminusUT: Double = {
-        guard year > -600, year < 2200 else { return 0 }
-        
-        let x = Double(year) + (Double(month) - 1 + Double(day) / 30) / 12
-        let x2: Double = x * x, x3: Double = x2 * x, x4: Double = x3 * x
-        if year < 1600 {
-            return 10535.328003326353 - 9.995238627481024 * x + 0.003067307630020489 * x2 - 7.76340698361363e-6 * x3 + 3.1331045394223196e-9 * x4 +
-                8.225530854405553e-12 * x2 * x3 - 7.486164715632051e-15 * x4 * x2 + 1.9362461549678834e-18 * x4 * x3 - 8.489224937827653e-23 * x4 * x4
-        }
-        
-        return -1_027_175.3477559977 + 2523.256625418965 * x - 1.885686849058459 * x2 + 5.869246227888417e-5 * x3 + 3.3379295816475025e-7 * x4 +
-                1.7758961671447929e-10 * x2 * x3 - 2.7889902806153024e-13 * x2 * x4 + 1.0224295822336825e-16 * x3 * x4 - 1.2528102370680435e-20 * x4 * x4
-    }()
+    let jd = toJulian(date)
 
     /// INPUT VARIABLES
     
@@ -202,6 +161,22 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
     
     func setUTDate(_ jd: Double) {
         jd_UT = jd
+        
+        let TTminusUT: Double = {
+            let (year, month, day, _, _, _) = fromJulian(jd).utcComponents
+            guard year > -600, year < 2200 else { return 0 }
+            
+            let x = Double(year) + (Double(month) - 1 + Double(day) / 30) / 12
+            let x2: Double = x * x, x3: Double = x2 * x, x4: Double = x3 * x
+            if year < 1600 {
+                return 10535.328003326353 - 9.995238627481024 * x + 0.003067307630020489 * x2 - 7.76340698361363e-6 * x3 + 3.1331045394223196e-9 * x4 +
+                    8.225530854405553e-12 * x2 * x3 - 7.486164715632051e-15 * x4 * x2 + 1.9362461549678834e-18 * x4 * x3 - 8.489224937827653e-23 * x4 * x4
+            }
+            
+            return -1_027_175.3477559977 + 2523.256625418965 * x - 1.885686849058459 * x2 + 5.869246227888417e-5 * x3 + 3.3379295816475025e-7 * x4 +
+                    1.7758961671447929e-10 * x2 * x3 - 2.7889902806153024e-13 * x2 * x4 + 1.0224295822336825e-16 * x3 * x4 - 1.2528102370680435e-20 * x4 * x4
+        }()
+
         t = (jd + TTminusUT / SECONDS_PER_DAY - J2000) / JULIAN_DAYS_PER_CENTURY
     }
 
@@ -335,8 +310,7 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
 
     /// Method to calculate values of Moon Disk
     /// - Returns: [optical librations (lp), lunar coordinates of the centre of the disk (bp), position angle of axis (p), bright limb angle (bl), paralactic angle (par)]
-    func getMoonDiskOrientationAngles(lst: Double, sunRA: Double, sunDec: Double,
-                                              moonLon: Double, moonLat: Double, moonRA: Double, moonDec: Double) -> [Double] {
+    func getMoonDiskOrientationAngles(lst: Double, sunRA: Double, sunDec: Double, moonLon: Double, moonLat: Double, moonRA: Double, moonDec: Double) -> [Double] {
         // Moon's argument of latitude
         let F: Double = toRadians(93.2720993 + 483_202.0175273 * t - 0.0034029 * t * t
             - t * t * t / 3_526_000 + t * t * t * t / 863_310_000)
@@ -438,8 +412,7 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
     slongitude = sl
     moonAge = ma
 
-    out = getMoonDiskOrientationAngles(lst: lst, sunRA: sunRA, sunDec: sunDec,
-                                       moonLon: toRadians(moonAzimuth), moonLat: toRadians(moonElevation), moonRA: moonRA, moonDec: moonDec)
+    out = getMoonDiskOrientationAngles(lst: lst, sunRA: sunRA, sunDec: sunDec, moonLon: toRadians(moonAzimuth), moonLat: toRadians(moonElevation), moonRA: moonRA, moonDec: moonDec)
     moonP = out[2]
     moonBL = out[3]
     moonPar = out[4]
@@ -720,4 +693,38 @@ func doCalc(_ arguments: CalculationArguments) -> [Double] {
     }
 
     return [azi, alt, rise, set, transit, transit_alt, ra, dec, dist, lst]
+}
+
+extension Date {
+    var utcComponents: (year: Int, month: Int, day: Int, h: Int, m: Int, s: Int) {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(abbreviation: "UTC")!
+        let dc = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: self)
+        
+        return (
+            year: dc.year!,
+            month: dc.month!,
+            day: dc.day!,
+            h: dc.hour!,
+            m: dc.minute!,
+            s: dc.second!
+        )
+    }
+}
+
+
+let DAY_SECONDS:Double = 60 * 60 * 24
+let J1970:Double = 2440588
+
+func toJulian(_ date:Date) -> Double {
+    return Double(date.timeIntervalSince1970) / DAY_SECONDS - 0.5 + J1970
+}
+
+func fromJulian(_ j:Double) -> Date {
+    let timeInterval = (j + 0.5 - J1970) * DAY_SECONDS
+    return Date(timeIntervalSince1970: timeInterval)
+}
+
+func toDays(date:Date) -> Double {
+    return toJulian(date) - J2000
 }
