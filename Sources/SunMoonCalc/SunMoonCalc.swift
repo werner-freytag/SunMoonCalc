@@ -66,6 +66,10 @@ public enum Errors: Error {
     case invalidLocation(longitude: Double, latitude: Double)
 }
 
+
+typealias CalculationData = (latitude: Double, longitude: Double, distance: Double, angularRadius: Double)
+
+
 /// Create instance of Sun/Moon Calculator
 /// - Parameters:
 ///   - date: The date/time of observations (local timezone)
@@ -154,16 +158,12 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
     var moonPar: Double = .nan
 
     
-    
-    
-
-    
     func setUTDate(_ jd: Double) {
         jd_UT = jd
     }
 
-    func getSun() -> [Double] {
-        let t = timeFactor(jd_UT)
+    func getSun(jd: Double) -> CalculationData {
+        let t = timeFactor(jd)
         
         // SUN PARAMETERS (Formulae from "Calendrical Calculations")
         let lon: Double = (280.46645 + 36000.76983 * t + 0.0003032 * t * t),
@@ -182,10 +182,10 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
             ecc: Double = 0.016708617 - 4.2037e-05 * t - 1.236e-07 * t * t, // Eccentricity
             v: Double = sanomaly + toRadians(c), // True anomaly
             sdistance: Double = 1.000001018 * (1 - ecc * ecc) / (1 + ecc * cos(v)) // In UA
-        return [slongitude, slatitude, sdistance, atan(696_000 / (AU * sdistance))]
+        return (slatitude, slongitude, sdistance, atan(696_000 / (AU * sdistance)))
     }
 
-    func getMoon() -> [Double] {
+    func getMoon(jd: Double) -> CalculationData {
         let t = timeFactor(jd_UT)
 
         // MOON PARAMETERS (Formulae from "Calendrical Calculations")
@@ -251,9 +251,8 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
         l += E * 2.472e-3 * sin(2 * phase + node - sanomaly - anomaly)
         l += E * 2.222e-3 * sin(2 * phase + node - sanomaly)
         l += E * 2.072e-3 * sin(2 * phase - node - sanomaly - anomaly)
-        let latitude: Double = l
 
-        return [longitude, latitude, distance * EARTH_RADIUS / AU, atan(1737.4 / (distance * EARTH_RADIUS))]
+        return (l, longitude, distance * EARTH_RADIUS / AU, atan(1737.4 / (distance * EARTH_RADIUS)))
     }
 
     func obtainAccurateRiseSetTransit(riseSetJD: Double, index: Int, niter: Int, sun: Bool, twilight: Twilight) -> Double {
@@ -266,10 +265,10 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
             setUTDate(riseSetJD)
             var out: [Double]
             if sun {
-                out = doCalc(getSun(), jd_UT: jd_UT, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
+                out = doCalc(getSun(jd: jd_UT), jd_UT: jd_UT, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
             } else {
-                _ = getSun()
-                out = doCalc(getMoon(), jd_UT: jd_UT, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
+                _ = getSun(jd: jd_UT)
+                out = doCalc(getMoon(jd: jd_UT), jd_UT: jd_UT, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
             }
             step = abs(riseSetJD - out[index])
             riseSetJD = out[index]
@@ -328,7 +327,7 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
     
     
     // First the Sun
-    var out: [Double] = doCalc(getSun(), jd_UT: jd_UT, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
+    var out = doCalc(getSun(jd: jd_UT), jd_UT: jd_UT, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
     sunAzimuth = out[0]
     sunElevation = out[1]
     sunRise = out[2]
@@ -348,7 +347,7 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
     } else {
         // Update Sun's maximum elevation
         setUTDate(sunTransit)
-        out = doCalc(getSun(), jd_UT: jd_UT, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
+        out = doCalc(getSun(jd: jd_UT), jd_UT: jd_UT, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
         sunTransitElevation = out[5]
     }
 
@@ -356,7 +355,7 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
     setUTDate(jd)
     sanomaly = sa
     slongitude = sl
-    out = doCalc(getMoon(), jd_UT: jd_UT, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
+    out = doCalc(getMoon(jd: jd_UT), jd_UT: jd_UT, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
     moonAzimuth = out[0]
     moonElevation = out[1]
     moonRise = out[2]
@@ -378,8 +377,8 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
     } else {
         // Update Moon's maximum elevation
         setUTDate(moonTransit)
-        _ = getSun()
-        out = doCalc(getMoon(), jd_UT: jd_UT, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
+        _ = getSun(jd: jd_UT)
+        out = doCalc(getMoon(jd: jd_UT), jd_UT: jd_UT, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
         moonTransitElevation = out[5]
     }
     setUTDate(jd)
@@ -517,16 +516,10 @@ func validateJulianDay(_ jd: Double) throws {
 }
 
 
-
-
-typealias CalculationArguments = (position: [Double], jd_UT: Double, obsLat: Double, obsLon: Double, twilight: Twilight)
-
-func doCalc(_ pos: [Double], jd_UT: Double,
+func doCalc(_ data: CalculationData, jd_UT: Double,
             obsLat: Double,
             obsLon: Double,
             twilight: Twilight) -> [Double] {
-    
-    var pos = pos
     
     let t = timeFactor(jd_UT)
 
@@ -543,12 +536,13 @@ func doCalc(_ pos: [Double], jd_UT: Double,
         d: Double = 0.002558 * cos(M1) - 0.00015339 * cos(M2)
     angle += toRadians(d)
 
-    pos[0] = toRadians(pos[0])
-    pos[1] = toRadians(pos[1])
-    let cl: Double = cos(pos[1]),
-        x: Double = pos[2] * cos(pos[0]) * cl
-    var y: Double = pos[2] * sin(pos[0]) * cl,
-        z: Double = pos[2] * sin(pos[1])
+    let lat = toRadians(data.latitude)
+    let lon = toRadians(data.longitude)
+
+    let cl: Double = cos(lat),
+        x: Double = data.distance * cos(lon) * cl
+    var y: Double = data.distance * sin(lon) * cl,
+        z: Double = data.distance * sin(lat)
     tmp = y * cos(angle) - z * sin(angle)
     z = y * sin(angle) + z * cos(angle)
     y = tmp
@@ -612,7 +606,7 @@ func doCalc(_ pos: [Double], jd_UT: Double,
         // The 34' factor is the standard refraction at horizon.
         // Removing angular radius will do calculations for the center of the disk instead
         // of the upper limb.
-        tmp = -toRadians(34 / 60) - pos[3]
+        tmp = -toRadians(34 / 60) - data.angularRadius
     case .Civil:
         tmp = toRadians(-6)
     case .Nautical:
