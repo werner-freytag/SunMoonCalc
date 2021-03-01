@@ -162,7 +162,7 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
         jd_UT = jd
     }
 
-    func getSun() -> CalculationArguments {
+    func getSun() -> [Double] {
         let t = timeFactor(jd_UT)
         
         // SUN PARAMETERS (Formulae from "Calendrical Calculations")
@@ -182,16 +182,10 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
             ecc: Double = 0.016708617 - 4.2037e-05 * t - 1.236e-07 * t * t, // Eccentricity
             v: Double = sanomaly + toRadians(c), // True anomaly
             sdistance: Double = 1.000001018 * (1 - ecc * ecc) / (1 + ecc * cos(v)) // In UA
-        return (
-            position: [slongitude, slatitude, sdistance, atan(696_000 / (AU * sdistance))],
-            jd_UT: jd_UT,
-            obsLat: obsLat,
-            obsLon: obsLon,
-            twilight: twilight
-        )
+        return [slongitude, slatitude, sdistance, atan(696_000 / (AU * sdistance))]
     }
 
-    func getMoon() -> CalculationArguments {
+    func getMoon() -> [Double] {
         let t = timeFactor(jd_UT)
 
         // MOON PARAMETERS (Formulae from "Calendrical Calculations")
@@ -259,16 +253,10 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
         l += E * 2.072e-3 * sin(2 * phase - node - sanomaly - anomaly)
         let latitude: Double = l
 
-        return (
-            position: [longitude, latitude, distance * EARTH_RADIUS / AU, atan(1737.4 / (distance * EARTH_RADIUS))],
-            jd_UT: jd_UT,
-            obsLat: obsLat,
-            obsLon: obsLon,
-            twilight: twilight
-        )
+        return [longitude, latitude, distance * EARTH_RADIUS / AU, atan(1737.4 / (distance * EARTH_RADIUS))]
     }
 
-    func obtainAccurateRiseSetTransit(riseSetJD: Double, index: Int, niter: Int, sun: Bool) -> Double {
+    func obtainAccurateRiseSetTransit(riseSetJD: Double, index: Int, niter: Int, sun: Bool, twilight: Twilight) -> Double {
         var riseSetJD: Double = riseSetJD,
             step: Double = -1
         for _ in 0 ..< niter {
@@ -278,10 +266,10 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
             setUTDate(riseSetJD)
             var out: [Double]
             if sun {
-                out = doCalc(getSun())
+                out = doCalc(getSun(), jd_UT: jd_UT, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
             } else {
                 _ = getSun()
-                out = doCalc(getMoon())
+                out = doCalc(getMoon(), jd_UT: jd_UT, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
             }
             step = abs(riseSetJD - out[index])
             riseSetJD = out[index]
@@ -340,7 +328,7 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
     
     
     // First the Sun
-    var out: [Double] = doCalc(getSun())
+    var out: [Double] = doCalc(getSun(), jd_UT: jd_UT, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
     sunAzimuth = out[0]
     sunElevation = out[1]
     sunRise = out[2]
@@ -352,15 +340,15 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
     let sa: Double = sanomaly, sl: Double = slongitude, lst: Double = out[9]
 
     var niter: Int = 3 // Number of iterations to get accurate rise/set/transit times
-    sunRise = obtainAccurateRiseSetTransit(riseSetJD: sunRise, index: 2, niter: niter, sun: true)
-    sunSet = obtainAccurateRiseSetTransit(riseSetJD: sunSet, index: 3, niter: niter, sun: true)
-    sunTransit = obtainAccurateRiseSetTransit(riseSetJD: sunTransit, index: 4, niter: niter, sun: true)
+    sunRise = obtainAccurateRiseSetTransit(riseSetJD: sunRise, index: 2, niter: niter, sun: true, twilight: twilight)
+    sunSet = obtainAccurateRiseSetTransit(riseSetJD: sunSet, index: 3, niter: niter, sun: true, twilight: twilight)
+    sunTransit = obtainAccurateRiseSetTransit(riseSetJD: sunTransit, index: 4, niter: niter, sun: true, twilight: twilight)
     if sunTransit == -1 {
         sunTransitElevation = 0
     } else {
         // Update Sun's maximum elevation
         setUTDate(sunTransit)
-        out = doCalc(getSun())
+        out = doCalc(getSun(), jd_UT: jd_UT, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
         sunTransitElevation = out[5]
     }
 
@@ -368,7 +356,7 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
     setUTDate(jd)
     sanomaly = sa
     slongitude = sl
-    out = doCalc(getMoon())
+    out = doCalc(getMoon(), jd_UT: jd_UT, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
     moonAzimuth = out[0]
     moonElevation = out[1]
     moonRise = out[2]
@@ -382,16 +370,16 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
     let ma: Double = moonAge
 
     niter = 5 // Number of iterations to get accurate rise/set/transit times
-    moonRise = obtainAccurateRiseSetTransit(riseSetJD: moonRise, index: 2, niter: niter, sun: false)
-    moonSet = obtainAccurateRiseSetTransit(riseSetJD: moonSet, index: 3, niter: niter, sun: false)
-    moonTransit = obtainAccurateRiseSetTransit(riseSetJD: moonTransit, index: 4, niter: niter, sun: false)
+    moonRise = obtainAccurateRiseSetTransit(riseSetJD: moonRise, index: 2, niter: niter, sun: false, twilight: twilight)
+    moonSet = obtainAccurateRiseSetTransit(riseSetJD: moonSet, index: 3, niter: niter, sun: false, twilight: twilight)
+    moonTransit = obtainAccurateRiseSetTransit(riseSetJD: moonTransit, index: 4, niter: niter, sun: false, twilight: twilight)
     if moonTransit == -1 {
         moonTransitElevation = 0
     } else {
         // Update Moon's maximum elevation
         setUTDate(moonTransit)
         _ = getSun()
-        out = doCalc(getMoon())
+        out = doCalc(getMoon(), jd_UT: jd_UT, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
         moonTransitElevation = out[5]
     }
     setUTDate(jd)
@@ -533,9 +521,12 @@ func validateJulianDay(_ jd: Double) throws {
 
 typealias CalculationArguments = (position: [Double], jd_UT: Double, obsLat: Double, obsLon: Double, twilight: Twilight)
 
-func doCalc(_ arguments: CalculationArguments) -> [Double] {
+func doCalc(_ pos: [Double], jd_UT: Double,
+            obsLat: Double,
+            obsLon: Double,
+            twilight: Twilight) -> [Double] {
     
-    var (pos, jd_UT, obsLat, obsLon, twilight) = arguments
+    var pos = pos
     
     let t = timeFactor(jd_UT)
 
@@ -716,12 +707,6 @@ func fromJulian(_ j:Double) -> Date {
 
 func toDays(date:Date) -> Double {
     return toJulian(date) - J2000
-}
-
-struct JulianDate {
-    init(date: Date) {
-        
-    }
 }
 
 func timeFactor(_ jd: Double) -> Double {
