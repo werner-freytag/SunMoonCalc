@@ -84,7 +84,6 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
     /// INPUT VARIABLES
     
     var jd_UT: Double = 0
-    var t: Double = 0
     
     let obsLon : Double = toRadians(longitude)
     let obsLat: Double = toRadians(latitude)
@@ -161,26 +160,11 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
     
     func setUTDate(_ jd: Double) {
         jd_UT = jd
-        
-        let TTminusUT: Double = {
-            let (year, month, day, _, _, _) = fromJulian(jd).utcComponents
-            guard year > -600, year < 2200 else { return 0 }
-            
-            let x = Double(year) + (Double(month) - 1 + Double(day) / 30) / 12
-            let x2: Double = x * x, x3: Double = x2 * x, x4: Double = x3 * x
-            if year < 1600 {
-                return 10535.328003326353 - 9.995238627481024 * x + 0.003067307630020489 * x2 - 7.76340698361363e-6 * x3 + 3.1331045394223196e-9 * x4 +
-                    8.225530854405553e-12 * x2 * x3 - 7.486164715632051e-15 * x4 * x2 + 1.9362461549678834e-18 * x4 * x3 - 8.489224937827653e-23 * x4 * x4
-            }
-            
-            return -1_027_175.3477559977 + 2523.256625418965 * x - 1.885686849058459 * x2 + 5.869246227888417e-5 * x3 + 3.3379295816475025e-7 * x4 +
-                    1.7758961671447929e-10 * x2 * x3 - 2.7889902806153024e-13 * x2 * x4 + 1.0224295822336825e-16 * x3 * x4 - 1.2528102370680435e-20 * x4 * x4
-        }()
-
-        t = (jd + TTminusUT / SECONDS_PER_DAY - J2000) / JULIAN_DAYS_PER_CENTURY
     }
 
     func getSun() -> CalculationArguments {
+        let t = timeFactor(jd_UT)
+        
         // SUN PARAMETERS (Formulae from "Calendrical Calculations")
         let lon: Double = (280.46645 + 36000.76983 * t + 0.0003032 * t * t),
             anom: Double = (357.5291 + 35999.0503 * t - 0.0001559 * t * t - 4.8e-07 * t * t * t)
@@ -200,7 +184,6 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
             sdistance: Double = 1.000001018 * (1 - ecc * ecc) / (1 + ecc * cos(v)) // In UA
         return (
             position: [slongitude, slatitude, sdistance, atan(696_000 / (AU * sdistance))],
-            t: t,
             jd_UT: jd_UT,
             obsLat: obsLat,
             obsLon: obsLon,
@@ -209,6 +192,8 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
     }
 
     func getMoon() -> CalculationArguments {
+        let t = timeFactor(jd_UT)
+
         // MOON PARAMETERS (Formulae from "Calendrical Calculations")
         let phase: Double = normalizeRadians(toRadians(297.8502042 + 445_267.1115168 * t - 0.00163 * t * t + t * t * t / 538_841 - t * t * t * t / 65_194_000))
 
@@ -276,7 +261,6 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
 
         return (
             position: [longitude, latitude, distance * EARTH_RADIUS / AU, atan(1737.4 / (distance * EARTH_RADIUS))],
-            t: t,
             jd_UT: jd_UT,
             obsLat: obsLat,
             obsLon: obsLon,
@@ -311,6 +295,9 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
     /// Method to calculate values of Moon Disk
     /// - Returns: [optical librations (lp), lunar coordinates of the centre of the disk (bp), position angle of axis (p), bright limb angle (bl), paralactic angle (par)]
     func getMoonDiskOrientationAngles(lst: Double, sunRA: Double, sunDec: Double, moonLon: Double, moonLat: Double, moonRA: Double, moonDec: Double) -> [Double] {
+        
+        let t = timeFactor(jd_UT)
+        
         // Moon's argument of latitude
         let F: Double = toRadians(93.2720993 + 483_202.0175273 * t - 0.0034029 * t * t
             - t * t * t / 3_526_000 + t * t * t * t / 863_310_000)
@@ -544,12 +531,14 @@ func validateJulianDay(_ jd: Double) throws {
 
 
 
-typealias CalculationArguments = (position: [Double], t: Double, jd_UT: Double, obsLat: Double, obsLon: Double, twilight: Twilight)
+typealias CalculationArguments = (position: [Double], jd_UT: Double, obsLat: Double, obsLon: Double, twilight: Twilight)
 
 func doCalc(_ arguments: CalculationArguments) -> [Double] {
     
-    var (pos, t, jd_UT, obsLat, obsLon, twilight) = arguments
+    var (pos, jd_UT, obsLat, obsLon, twilight) = arguments
     
+    let t = timeFactor(jd_UT)
+
     // Ecliptic to equatorial coordinates
     let t2: Double = t / 100
     var tmp: Double = t2 * (27.87 + t2 * (5.79 + t2 * 2.45))
@@ -727,4 +716,29 @@ func fromJulian(_ j:Double) -> Date {
 
 func toDays(date:Date) -> Double {
     return toJulian(date) - J2000
+}
+
+struct JulianDate {
+    init(date: Date) {
+        
+    }
+}
+
+func timeFactor(_ jd: Double) -> Double {
+    let TTminusUT: Double = {
+        let (year, month, day, _, _, _) = fromJulian(jd).utcComponents
+        guard year > -600, year < 2200 else { return 0 }
+        
+        let x = Double(year) + (Double(month) - 1 + Double(day) / 30) / 12
+        let x2: Double = x * x, x3: Double = x2 * x, x4: Double = x3 * x
+        if year < 1600 {
+            return 10535.328003326353 - 9.995238627481024 * x + 0.003067307630020489 * x2 - 7.76340698361363e-6 * x3 + 3.1331045394223196e-9 * x4 +
+                8.225530854405553e-12 * x2 * x3 - 7.486164715632051e-15 * x4 * x2 + 1.9362461549678834e-18 * x4 * x3 - 8.489224937827653e-23 * x4 * x4
+        }
+        
+        return -1_027_175.3477559977 + 2523.256625418965 * x - 1.885686849058459 * x2 + 5.869246227888417e-5 * x3 + 3.3379295816475025e-7 * x4 +
+                1.7758961671447929e-10 * x2 * x3 - 2.7889902806153024e-13 * x2 * x4 + 1.0224295822336825e-16 * x3 * x4 - 1.2528102370680435e-20 * x4 * x4
+    }()
+
+    return (jd + TTminusUT / SECONDS_PER_DAY - J2000) / JULIAN_DAYS_PER_CENTURY
 }
