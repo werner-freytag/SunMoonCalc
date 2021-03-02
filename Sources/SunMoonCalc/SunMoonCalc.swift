@@ -1,5 +1,7 @@
 import Foundation
 
+/// Original Java code: http://conga.oan.es/~alonso/doku.php?id=blog:sun_moon_position
+
 /// Convert to degrees from radians
 func toDegrees<T: FloatingPoint>(_ rad: T) -> T {
     rad * 180 / T.pi
@@ -139,32 +141,8 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
     /// Moon illumination (percentage)
     var moonIllumination: Double = .nan
 
-    func obtainAccurateRiseSetTransit(jd: Double?, keyPath: KeyPath<EphemerisData, Double?>, niter: Int, sun: Bool, twilight: Twilight) -> Double? {
-        guard var jd = jd else { return nil } // nil means  no rise/set from that location
-        var step: Double = -1
-        
-        for _ in 0 ..< niter {
-            let out: EphemerisData
-            if sun {
-                out = doCalc(getSunCalculationData(jd: jd), jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
-            } else {
-                _ = getSunCalculationData(jd: jd)
-                out = doCalc(getMoonCalculationData(jd: jd), jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
-            }
-            guard let newValue = out[keyPath: keyPath] else { return nil }
-            step = abs(jd - newValue)
-            jd = newValue
-        }
-        
-        // did not converge => without rise/set/transit in this date
-        guard step <= 1 / SECONDS_PER_DAY else { return nil }
-
-        return jd
-    }
-
-    
     // First the Sun
-    var out = doCalc(getSunCalculationData(jd: jd), jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
+    var out = doCalc(dataProvider: getSunCalculationData, jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
 
     sunAzimuth = out.azimuth
     sunElevation = out.elevation
@@ -178,20 +156,20 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
     let lst = out.localApparentSiderealTime
 
     var niter: Int = 3 // Number of iterations to get accurate rise/set/transit times
-    sunRise = obtainAccurateRiseSetTransit(jd: sunRise, keyPath: \EphemerisData.rise, niter: niter, sun: true, twilight: twilight)
-    sunSet = obtainAccurateRiseSetTransit(jd: sunSet, keyPath: \EphemerisData.set, niter: niter, sun: true, twilight: twilight)
-    sunTransit = obtainAccurateRiseSetTransit(jd: sunTransit, keyPath: \EphemerisData.transit, niter: niter, sun: true, twilight: twilight)
+    sunRise = obtainAccurateRiseSetTransit(jd: sunRise, keyPath: \EphemerisData.rise, niter: niter, dataProvider: getSunCalculationData, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
+    sunSet = obtainAccurateRiseSetTransit(jd: sunSet, keyPath: \EphemerisData.set, niter: niter, dataProvider: getSunCalculationData, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
+    sunTransit = obtainAccurateRiseSetTransit(jd: sunTransit, keyPath: \EphemerisData.transit, niter: niter, dataProvider: getSunCalculationData, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
     
     if let sunTransit = sunTransit {
         // Update Sun's maximum elevation
-        out = doCalc(getSunCalculationData(jd: sunTransit), jd: sunTransit, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
+        out = doCalc(dataProvider: getSunCalculationData, jd: sunTransit, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
         sunTransitElevation = out.transitElevation
     } else {
         sunTransitElevation = 0
     }
 
     // Now Moon
-    out = doCalc(getMoonCalculationData(jd: jd), jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
+    out = doCalc(dataProvider: getMoonCalculationData, jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
     moonAzimuth = out.azimuth
     moonElevation = out.elevation
     moonRise = out.rise
@@ -205,14 +183,13 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
     moonAge = getMoonAge(jd: jd)
 
     niter = 5 // Number of iterations to get accurate rise/set/transit times
-    moonRise = obtainAccurateRiseSetTransit(jd: moonRise, keyPath: \EphemerisData.rise, niter: niter, sun: false, twilight: twilight)
-    moonSet = obtainAccurateRiseSetTransit(jd: moonSet, keyPath: \EphemerisData.set, niter: niter, sun: false, twilight: twilight)
-    moonTransit = obtainAccurateRiseSetTransit(jd: moonTransit, keyPath: \EphemerisData.transit, niter: niter, sun: false, twilight: twilight)
+    moonRise = obtainAccurateRiseSetTransit(jd: moonRise, keyPath: \EphemerisData.rise, niter: niter, dataProvider: getMoonCalculationData, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
+    moonSet = obtainAccurateRiseSetTransit(jd: moonSet, keyPath: \EphemerisData.set, niter: niter, dataProvider: getMoonCalculationData, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
+    moonTransit = obtainAccurateRiseSetTransit(jd: moonTransit, keyPath: \EphemerisData.transit, niter: niter, dataProvider: getMoonCalculationData, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
     
     if let moonTransit = moonTransit {
         // Update Moon's maximum elevation
-        _ = getSunCalculationData(jd: moonTransit)
-        out = doCalc(getMoonCalculationData(jd: moonTransit), jd: moonTransit, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
+        out = doCalc(dataProvider: getMoonCalculationData, jd: moonTransit, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
         moonTransitElevation = out.transitElevation
     } else {
         moonTransitElevation = 0
@@ -371,10 +348,14 @@ struct EphemerisData {
     let localApparentSiderealTime: Double
 }
 
-func doCalc(_ data: CalculationData, jd: Double, obsLat: Double, obsLon: Double, twilight: Twilight) -> EphemerisData {
-    
-    let t = timeFactor(jd)
 
+typealias CalculationDataProvider = (Double) -> CalculationData
+
+func doCalc(dataProvider: CalculationDataProvider, jd: Double, obsLat: Double, obsLon: Double, twilight: Twilight) -> EphemerisData {
+    let data = dataProvider(jd)
+
+    let t = timeFactor(jd)
+    
     // Ecliptic to equatorial coordinates
     let t2: Double = t / 100
     var tmp: Double = t2 * (27.87 + t2 * (5.79 + t2 * 2.45))
@@ -519,6 +500,24 @@ func doCalc(_ data: CalculationData, jd: Double, obsLat: Double, obsLon: Double,
     }
 
     return EphemerisData(azimuth: azi, elevation: alt, rise: rise, set: set, transit: transit, transitElevation: transit_alt, rightAscension: ra, declination: dec, distance: dist, localApparentSiderealTime: lst)
+}
+
+func obtainAccurateRiseSetTransit(jd: Double?, keyPath: KeyPath<EphemerisData, Double?>, niter: Int, dataProvider: CalculationDataProvider, obsLat: Double, obsLon: Double, twilight: Twilight) -> Double? {
+    guard var jd = jd else { return nil } // nil means  no rise/set from that location
+    var step: Double = -1
+    
+    for _ in 0 ..< niter {
+        let out: EphemerisData
+        out = doCalc(dataProvider: dataProvider, jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
+        guard let newValue = out[keyPath: keyPath] else { return nil }
+        step = abs(jd - newValue)
+        jd = newValue
+    }
+    
+    // did not converge => without rise/set/transit in this date
+    guard step <= 1 / SECONDS_PER_DAY else { return nil }
+
+    return jd
 }
 
 extension Date {
