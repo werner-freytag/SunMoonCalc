@@ -90,9 +90,6 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
     let obsLon : Double = toRadians(longitude)
     let obsLat: Double = toRadians(latitude)
     
-    var slongitude: Double = 0
-    var sanomaly: Double = 0
-
     /// OUTPUT VARIABLES
     
     /// Sun azimuth (radians)
@@ -152,26 +149,47 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
     /// Moon paralactic angle (radians)
     var moonPar: Double = .nan
 
+
+    // SUN PARAMETERS (Formulae from "Calendrical Calculations")
+    
+    
+    /// Correction to the mean ecliptic longitude
+    func getSunLongitudeCorrection(jd: Double) -> Double {
+        let t = timeFactor(jd)
+        let sanomaly = getSunAnomaly(jd: jd)
+        var c: Double = (1.9146 - 0.004817 * t - 0.000014 * t * t) * sin(sanomaly)
+        c = c + (0.019993 - 0.000101 * t) * sin(2 * sanomaly)
+        c = c + 0.00029 * sin(3 * sanomaly)
+        
+        return c
+    }
+    
+    func getSunLongitude(jd: Double) -> Double {
+        let t = timeFactor(jd)
+        let longitudeCorrection = getSunLongitudeCorrection(jd: jd)
+        
+        // Now, let calculate nutation and aberration
+        let M1 = toRadians(124.90 - 1934.134 * t + 0.002063 * t * t),
+            M2 = toRadians(201.11 + 72001.5377 * t + 0.00057 * t * t),
+            aberration = -0.00569 - 0.0047785 * sin(M1) - 0.0003667 * sin(M2)
+
+        return 280.46645 + 36000.76983 * t + 0.0003032 * t * t + longitudeCorrection + aberration
+    }
+
+    func getSunAnomaly(jd: Double) -> Double {
+        let t = timeFactor(jd)
+        return toRadians(357.5291 + 35999.0503 * t - 0.0001559 * t * t - 4.8e-07 * t * t * t)
+    }
     
     func getSun(jd: Double) -> CalculationData {
         let t = timeFactor(jd)
         
-        // SUN PARAMETERS (Formulae from "Calendrical Calculations")
-        let lon: Double = (280.46645 + 36000.76983 * t + 0.0003032 * t * t),
-            anom: Double = (357.5291 + 35999.0503 * t - 0.0001559 * t * t - 4.8e-07 * t * t * t)
-        sanomaly = toRadians(anom)
-        var c: Double = (1.9146 - 0.004817 * t - 0.000014 * t * t) * sin(sanomaly)
-        c = c + (0.019993 - 0.000101 * t) * sin(2 * sanomaly)
-        c = c + 0.00029 * sin(3 * sanomaly) // Correction to the mean ecliptic longitude
-        // Now, let calculate nutation and aberration
-        let M1: Double = toRadians(124.90 - 1934.134 * t + 0.002063 * t * t),
-            M2: Double = toRadians(201.11 + 72001.5377 * t + 0.00057 * t * t),
-            d: Double = -0.00569 - 0.0047785 * sin(M1) - 0.0003667 * sin(M2)
-
-        slongitude = lon + c + d // apparent longitude (error<0.003 deg)
+        let sanomaly = getSunAnomaly(jd: jd)
+        let slongitude = getSunLongitude(jd: jd)
+        
         let slatitude: Double = 0, // Sun's ecliptic latitude is always negligible
             ecc: Double = 0.016708617 - 4.2037e-05 * t - 1.236e-07 * t * t, // Eccentricity
-            v: Double = sanomaly + toRadians(c), // True anomaly
+            v: Double = sanomaly + toRadians(getSunLongitudeCorrection(jd: jd)), // True anomaly
             sdistance: Double = 1.000001018 * (1 - ecc * ecc) / (1 + ecc * cos(v)) // In UA
         return (slatitude, slongitude, sdistance, atan(696_000 / (AU * sdistance)))
     }
@@ -192,6 +210,8 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
 
         let E: Double = 1 - (0.002495 + 7.52e-06 * (t + 1)) * (t + 1)
 
+        let sanomaly = getSunAnomaly(jd: jd)
+        
         // Now longitude, with the three main correcting terms of evection,
         // variation, and equation of year, plus other terms (error<0.01 deg)
         // P. Duffet's MOON program taken as reference
@@ -219,7 +239,7 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
         longitude += d
 
         // Get accurate Moon age
-        moonAge = normalizeRadians(toRadians(longitude - slongitude)) * LUNAR_CYCLE_DAYS / (2 * Double.pi)
+        moonAge = normalizeRadians(toRadians(longitude - getSunLongitude(jd: jd))) * LUNAR_CYCLE_DAYS / (2 * Double.pi)
 
         // Now Moon parallax
         var parallax: Double = 0.950724 + 0.051818 * cos(anomaly) + 0.009531 * cos(2 * phase - anomaly)
@@ -277,35 +297,35 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
         let t = timeFactor(jd)
         
         // Moon's argument of latitude
-        let F: Double = toRadians(93.2720993 + 483_202.0175273 * t - 0.0034029 * t * t
-            - t * t * t / 3_526_000 + t * t * t * t / 863_310_000)
+        let F = toRadians(93.2720993 + 483_202.0175273 * t - 0.0034029 * t * t - t * t * t / 3_526_000 + t * t * t * t / 863_310_000)
+        
         // Moon's inclination
-        let I: Double = toRadians(1.54242)
+        let I = toRadians(1.54242)
+        
         // Moon's mean ascending node longitude
-        let omega: Double = toRadians(125.0445550 - 1934.1361849 * t + 0.0020762 * t * t
-            + t * t * t / 467_410 - t * t * t * t / 18_999_000)
+        let omega = toRadians(125.0445550 - 1934.1361849 * t + 0.0020762 * t * t + t * t * t / 467_410 - t * t * t * t / 18_999_000)
+        
         // Obliquity of ecliptic (approx, better formulae up)
-        let eps: Double = toRadians(23.43929)
+        let eps = toRadians(23.43929)
 
         // Obtain optical librations lp and bp
-        let W: Double = moonLon - omega,
-            sinA: Double = sin(W) * cos(moonLat) * cos(I) - sin(moonLat) * sin(I),
-            cosA: Double = cos(W) * cos(moonLat),
-            A: Double = atan2(sinA, cosA),
-            lp: Double = normalizeRadians(A - F),
-            sinbp: Double = -sin(W) * cos(moonLat) * sin(I) - sin(moonLat) * cos(I),
-            bp: Double = asin(sinbp)
+        let W = moonLon - omega,
+            sinA = sin(W) * cos(moonLat) * cos(I) - sin(moonLat) * sin(I),
+            cosA = cos(W) * cos(moonLat),
+            A = atan2(sinA, cosA),
+            lp = normalizeRadians(A - F),
+            sinbp = -sin(W) * cos(moonLat) * sin(I) - sin(moonLat) * cos(I),
+            bp = asin(sinbp)
 
         // Obtain position angle of axis p
-        var x: Double = sin(I) * sin(omega),
-            y: Double = sin(I) * cos(omega) * cos(eps) - cos(I) * sin(eps)
-        let w: Double = atan2(x, y),
-            sinp: Double = sqrt(x * x + y * y) * cos(moonRA - w) / cos(bp),
-            p: Double = asin(sinp)
+        var x = sin(I) * sin(omega),
+            y = sin(I) * cos(omega) * cos(eps) - cos(I) * sin(eps)
+        let w = atan2(x, y),
+            sinp = sqrt(x * x + y * y) * cos(moonRA - w) / cos(bp),
+            p = asin(sinp)
 
         // Compute bright limb angle bl
-        let bl: Double = (Double.pi + atan2(cos(sunDec) * sin(moonRA - sunRA), cos(sunDec)
-                * sin(moonDec) * cos(moonRA - sunRA) - sin(sunDec) * cos(moonDec)))
+        let bl = (Double.pi + atan2(cos(sunDec) * sin(moonRA - sunRA), cos(sunDec) * sin(moonDec) * cos(moonRA - sunRA) - sin(sunDec) * cos(moonDec)))
 
         // Paralactic angle par
         y = sin(lst - moonRA)
@@ -327,7 +347,7 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
     sunTransitElevation = out[5]
     let sunRA: Double = out[6], sunDec: Double = out[7]
     sunDistance = out[8]
-    let sa: Double = sanomaly, sl: Double = slongitude, lst: Double = out[9]
+    let lst: Double = out[9]
 
     var niter: Int = 3 // Number of iterations to get accurate rise/set/transit times
     sunRise = obtainAccurateRiseSetTransit(riseSetJD: sunRise, index: 2, niter: niter, sun: true, twilight: twilight)
@@ -342,8 +362,6 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
     }
 
     // Now Moon
-    sanomaly = sa
-    slongitude = sl
     out = doCalc(getMoon(jd: jd), jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
     moonAzimuth = out[0]
     moonElevation = out[1]
@@ -370,8 +388,6 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
         moonTransitElevation = out[5]
     }
 
-    sanomaly = sa
-    slongitude = sl
     moonAge = ma
 
     out = getMoonDiskOrientationAngles(lst: lst, sunRA: sunRA, sunDec: sunDec, moonLon: toRadians(moonAzimuth), moonLat: toRadians(moonElevation), moonRA: moonRA, moonDec: moonDec, jd: jd)
@@ -504,10 +520,7 @@ func validateJulianDay(_ jd: Double) throws {
 }
 
 
-func doCalc(_ data: CalculationData, jd: Double,
-            obsLat: Double,
-            obsLon: Double,
-            twilight: Twilight) -> [Double] {
+func doCalc(_ data: CalculationData, jd: Double, obsLat: Double, obsLon: Double, twilight: Twilight) -> [Double] {
     
     let t = timeFactor(jd)
 
