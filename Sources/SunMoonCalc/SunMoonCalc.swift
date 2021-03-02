@@ -256,7 +256,6 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
     moonDistance = out[8]
     moonIllumination = (1 - cos(acos(sin(sunDec) * sin(moonDec) + cos(sunDec) * cos(moonDec) * cos(moonRA - sunRA)))) * 0.5
     moonAge = getMoonAge(jd: jd)
-    let ma: Double = moonAge
 
     niter = 5 // Number of iterations to get accurate rise/set/transit times
     moonRise = obtainAccurateRiseSetTransit(riseSetJD: moonRise, index: 2, niter: niter, sun: false, twilight: twilight)
@@ -270,8 +269,6 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
         out = doCalc(getMoon(jd: moonTransit), jd: moonTransit, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
         moonTransitElevation = out[5]
     }
-
-    moonAge = ma
 
     out = getMoonDiskOrientationAngles(lst: lst, sunRA: sunRA, sunDec: sunDec, moonLon: toRadians(moonAzimuth), moonLat: toRadians(moonElevation), moonRA: moonRA, moonDec: moonDec, jd: jd)
     moonP = out[2]
