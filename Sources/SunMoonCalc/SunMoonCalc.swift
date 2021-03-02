@@ -148,78 +148,6 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
     /// Moon paralactic angle (radians)
     var moonPar: Double = .nan
 
-    func getMoon(jd: Double) -> CalculationData {
-        let t = timeFactor(jd)
-
-        // MOON PARAMETERS (Formulae from "Calendrical Calculations")
-        let phase: Double = normalizeRadians(toRadians(297.8502042 + 445_267.1115168 * t - 0.00163 * t * t + t * t * t / 538_841 - t * t * t * t / 65_194_000))
-
-        // Anomalistic phase
-        var anomaly: Double = (134.9634114 + 477_198.8676313 * t + 0.008997 * t * t + t * t * t / 69699 - t * t * t * t / 14_712_000)
-        anomaly = toRadians(anomaly)
-
-        // Degrees from ascending node
-        var node: Double = (93.2720993 + 483_202.0175273 * t - 0.0034029 * t * t - t * t * t / 3_526_000 + t * t * t * t / 863_310_000)
-        node = toRadians(node)
-
-        let E: Double = 1 - (0.002495 + 7.52e-06 * (t + 1)) * (t + 1)
-
-        let sanomaly = getSunAnomaly(jd: jd)
-        
-        // Now longitude, with the three main correcting terms of evection,
-        // variation, and equation of year, plus other terms (error<0.01 deg)
-        // P. Duffet's MOON program taken as reference
-        var l: Double = (218.31664563 + 481_267.8811958 * t - 0.00146639 * t * t + t * t * t / 540_135.03 - t * t * t * t / 65_193_770.4)
-        l += 6.28875 * sin(anomaly) + 1.274018 * sin(2 * phase - anomaly) + 0.658309 * sin(2 * phase)
-        l += 0.213616 * sin(2 * anomaly) - E * 0.185596 * sin(sanomaly) - 0.114336 * sin(2 * node)
-        l += 0.058793 * sin(2 * phase - 2 * anomaly) + 0.057212 * E * sin(2 * phase - anomaly - sanomaly) + 0.05332 * sin(2 * phase + anomaly)
-        l += 0.045874 * E * sin(2 * phase - sanomaly) + 0.041024 * E * sin(anomaly - sanomaly) - 0.034718 * sin(phase) - E * 0.030465 * sin(sanomaly + anomaly)
-        l += 0.015326 * sin(2 * (phase - node)) - 0.012528 * sin(2 * node + anomaly) - 0.01098 * sin(2 * node - anomaly) + 0.010674 * sin(4 * phase - anomaly)
-        l += 0.010034 * sin(3 * anomaly) + 0.008548 * sin(4 * phase - 2 * anomaly)
-        l += -E * 0.00791 * sin(sanomaly - anomaly + 2 * phase) - E * 0.006783 * sin(2 * phase + sanomaly) + 0.005162 * sin(anomaly - phase) + E * 0.005 * sin(sanomaly + phase)
-        l += 0.003862 * sin(4 * phase) + E * 0.004049 * sin(anomaly - sanomaly + 2 * phase) + 0.003996 * sin(2 * (anomaly + phase)) + 0.003665 * sin(2 * phase - 3 * anomaly)
-        l += E * 2.695e-3 * sin(2 * anomaly - sanomaly) + 2.602e-3 * sin(anomaly - 2 * (node + phase))
-        l += E * 2.396e-3 * sin(2 * (phase - anomaly) - sanomaly) - 2.349e-3 * sin(anomaly + phase)
-        l += E * E * 2.249e-3 * sin(2 * (phase - sanomaly)) - E * 2.125e-3 * sin(2 * anomaly + sanomaly)
-        l += -E * E * 2.079e-3 * sin(2 * sanomaly) + E * E * 2.059e-3 * sin(2 * (phase - sanomaly) - anomaly)
-        l += -1.773e-3 * sin(anomaly + 2 * (phase - node)) - 1.595e-3 * sin(2 * (node + phase))
-        l += E * 1.22e-3 * sin(4 * phase - sanomaly - anomaly) - 1.11e-3 * sin(2 * (anomaly + node))
-        var longitude: Double = l
-
-        // Let's add nutation here also
-        let M1: Double = toRadians(124.90 - 1934.134 * t + 0.002063 * t * t),
-            M2: Double = toRadians(201.11 + 72001.5377 * t + 0.00057 * t * t),
-            d: Double = -0.0047785 * sin(M1) - 0.0003667 * sin(M2)
-        longitude += d
-
-        // Get accurate Moon age
-        moonAge = normalizeRadians(toRadians(longitude - getSunLongitude(jd: jd))) * LUNAR_CYCLE_DAYS / (2 * Double.pi)
-
-        // Now Moon parallax
-        var parallax: Double = 0.950724 + 0.051818 * cos(anomaly) + 0.009531 * cos(2 * phase - anomaly)
-        parallax += 0.007843 * cos(2 * phase) + 0.002824 * cos(2 * anomaly)
-        parallax += 0.000857 * cos(2 * phase + anomaly) + E * 0.000533 * cos(2 * phase - sanomaly)
-        parallax += E * 0.000401 * cos(2 * phase - anomaly - sanomaly) + E * 0.00032 * cos(anomaly - sanomaly) - 0.000271 * cos(phase)
-        parallax += -E * 0.000264 * cos(sanomaly + anomaly) - 0.000198 * cos(2 * node - anomaly)
-        parallax += 1.73e-4 * cos(3 * anomaly) + 1.67e-4 * cos(4 * phase - anomaly)
-
-        // So Moon distance in Earth radii is, more or less,
-        let distance: Double = 1 / sin(toRadians(parallax))
-
-        // Ecliptic latitude with nodal phase (error<0.01 deg)
-        l = 5.128189 * sin(node) + 0.280606 * sin(node + anomaly) + 0.277693 * sin(anomaly - node)
-        l += 0.173238 * sin(2 * phase - node) + 0.055413 * sin(2 * phase + node - anomaly)
-        l += 0.046272 * sin(2 * phase - node - anomaly) + 0.032573 * sin(2 * phase + node)
-        l += 0.017198 * sin(2 * anomaly + node) + 0.009267 * sin(2 * phase + anomaly - node)
-        l += 0.008823 * sin(2 * anomaly - node) + E * 0.008247 * sin(2 * phase - sanomaly - node) + 0.004323 * sin(2 * (phase - anomaly) - node)
-        l += 0.0042 * sin(2 * phase + node + anomaly) + E * 0.003372 * sin(node - sanomaly - 2 * phase)
-        l += E * 2.472e-3 * sin(2 * phase + node - sanomaly - anomaly)
-        l += E * 2.222e-3 * sin(2 * phase + node - sanomaly)
-        l += E * 2.072e-3 * sin(2 * phase - node - sanomaly - anomaly)
-
-        return (l, longitude, distance * EARTH_RADIUS / AU, atan(1737.4 / (distance * EARTH_RADIUS)))
-    }
-
     func obtainAccurateRiseSetTransit(riseSetJD: Double, index: Int, niter: Int, sun: Bool, twilight: Twilight) -> Double {
         var riseSetJD: Double = riseSetJD,
             step: Double = -1
@@ -327,6 +255,7 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
         moonDec = out[7]
     moonDistance = out[8]
     moonIllumination = (1 - cos(acos(sin(sunDec) * sin(moonDec) + cos(sunDec) * cos(moonDec) * cos(moonRA - sunRA)))) * 0.5
+    moonAge = getMoonAge(jd: jd)
     let ma: Double = moonAge
 
     niter = 5 // Number of iterations to get accurate rise/set/transit times
@@ -728,3 +657,77 @@ func getSun(jd: Double) -> CalculationData {
 
 
 
+func getMoon(jd: Double) -> CalculationData {
+    let t = timeFactor(jd)
+
+    // MOON PARAMETERS (Formulae from "Calendrical Calculations")
+    let phase: Double = normalizeRadians(toRadians(297.8502042 + 445_267.1115168 * t - 0.00163 * t * t + t * t * t / 538_841 - t * t * t * t / 65_194_000))
+
+    // Anomalistic phase
+    var anomaly: Double = (134.9634114 + 477_198.8676313 * t + 0.008997 * t * t + t * t * t / 69699 - t * t * t * t / 14_712_000)
+    anomaly = toRadians(anomaly)
+
+    // Degrees from ascending node
+    var node: Double = (93.2720993 + 483_202.0175273 * t - 0.0034029 * t * t - t * t * t / 3_526_000 + t * t * t * t / 863_310_000)
+    node = toRadians(node)
+
+    let E: Double = 1 - (0.002495 + 7.52e-06 * (t + 1)) * (t + 1)
+
+    let sanomaly = getSunAnomaly(jd: jd)
+    
+    // Now longitude, with the three main correcting terms of evection,
+    // variation, and equation of year, plus other terms (error<0.01 deg)
+    // P. Duffet's MOON program taken as reference
+    var l: Double = (218.31664563 + 481_267.8811958 * t - 0.00146639 * t * t + t * t * t / 540_135.03 - t * t * t * t / 65_193_770.4)
+    l += 6.28875 * sin(anomaly) + 1.274018 * sin(2 * phase - anomaly) + 0.658309 * sin(2 * phase)
+    l += 0.213616 * sin(2 * anomaly) - E * 0.185596 * sin(sanomaly) - 0.114336 * sin(2 * node)
+    l += 0.058793 * sin(2 * phase - 2 * anomaly) + 0.057212 * E * sin(2 * phase - anomaly - sanomaly) + 0.05332 * sin(2 * phase + anomaly)
+    l += 0.045874 * E * sin(2 * phase - sanomaly) + 0.041024 * E * sin(anomaly - sanomaly) - 0.034718 * sin(phase) - E * 0.030465 * sin(sanomaly + anomaly)
+    l += 0.015326 * sin(2 * (phase - node)) - 0.012528 * sin(2 * node + anomaly) - 0.01098 * sin(2 * node - anomaly) + 0.010674 * sin(4 * phase - anomaly)
+    l += 0.010034 * sin(3 * anomaly) + 0.008548 * sin(4 * phase - 2 * anomaly)
+    l += -E * 0.00791 * sin(sanomaly - anomaly + 2 * phase) - E * 0.006783 * sin(2 * phase + sanomaly) + 0.005162 * sin(anomaly - phase) + E * 0.005 * sin(sanomaly + phase)
+    l += 0.003862 * sin(4 * phase) + E * 0.004049 * sin(anomaly - sanomaly + 2 * phase) + 0.003996 * sin(2 * (anomaly + phase)) + 0.003665 * sin(2 * phase - 3 * anomaly)
+    l += E * 2.695e-3 * sin(2 * anomaly - sanomaly) + 2.602e-3 * sin(anomaly - 2 * (node + phase))
+    l += E * 2.396e-3 * sin(2 * (phase - anomaly) - sanomaly) - 2.349e-3 * sin(anomaly + phase)
+    l += E * E * 2.249e-3 * sin(2 * (phase - sanomaly)) - E * 2.125e-3 * sin(2 * anomaly + sanomaly)
+    l += -E * E * 2.079e-3 * sin(2 * sanomaly) + E * E * 2.059e-3 * sin(2 * (phase - sanomaly) - anomaly)
+    l += -1.773e-3 * sin(anomaly + 2 * (phase - node)) - 1.595e-3 * sin(2 * (node + phase))
+    l += E * 1.22e-3 * sin(4 * phase - sanomaly - anomaly) - 1.11e-3 * sin(2 * (anomaly + node))
+    var longitude: Double = l
+
+    // Let's add nutation here also
+    let M1: Double = toRadians(124.90 - 1934.134 * t + 0.002063 * t * t),
+        M2: Double = toRadians(201.11 + 72001.5377 * t + 0.00057 * t * t),
+        d: Double = -0.0047785 * sin(M1) - 0.0003667 * sin(M2)
+    longitude += d
+
+    // Now Moon parallax
+    var parallax = 0.950724 + 0.051818 * cos(anomaly) + 0.009531 * cos(2 * phase - anomaly)
+    parallax += 0.007843 * cos(2 * phase) + 0.002824 * cos(2 * anomaly)
+    parallax += 0.000857 * cos(2 * phase + anomaly) + E * 0.000533 * cos(2 * phase - sanomaly)
+    parallax += E * 0.000401 * cos(2 * phase - anomaly - sanomaly) + E * 0.00032 * cos(anomaly - sanomaly) - 0.000271 * cos(phase)
+    parallax += -E * 0.000264 * cos(sanomaly + anomaly) - 0.000198 * cos(2 * node - anomaly)
+    parallax += 1.73e-4 * cos(3 * anomaly) + 1.67e-4 * cos(4 * phase - anomaly)
+
+    // So Moon distance in Earth radii is, more or less,
+    let distance: Double = 1 / sin(toRadians(parallax))
+
+    // Ecliptic latitude with nodal phase (error<0.01 deg)
+    l = 5.128189 * sin(node) + 0.280606 * sin(node + anomaly) + 0.277693 * sin(anomaly - node)
+    l += 0.173238 * sin(2 * phase - node) + 0.055413 * sin(2 * phase + node - anomaly)
+    l += 0.046272 * sin(2 * phase - node - anomaly) + 0.032573 * sin(2 * phase + node)
+    l += 0.017198 * sin(2 * anomaly + node) + 0.009267 * sin(2 * phase + anomaly - node)
+    l += 0.008823 * sin(2 * anomaly - node) + E * 0.008247 * sin(2 * phase - sanomaly - node) + 0.004323 * sin(2 * (phase - anomaly) - node)
+    l += 0.0042 * sin(2 * phase + node + anomaly) + E * 0.003372 * sin(node - sanomaly - 2 * phase)
+    l += E * 2.472e-3 * sin(2 * phase + node - sanomaly - anomaly)
+    l += E * 2.222e-3 * sin(2 * phase + node - sanomaly)
+    l += E * 2.072e-3 * sin(2 * phase - node - sanomaly - anomaly)
+
+    return (l, longitude, distance * EARTH_RADIUS / AU, atan(1737.4 / (distance * EARTH_RADIUS)))
+}
+
+// Get accurate Moon age
+func getMoonAge(jd: Double) -> Double {
+    let data = getMoon(jd: jd)
+    return normalizeRadians(toRadians(data.longitude - getSunLongitude(jd: jd))) * LUNAR_CYCLE_DAYS / (2 * .pi)
+}
