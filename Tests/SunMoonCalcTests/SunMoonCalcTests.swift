@@ -36,9 +36,7 @@ final class SunMoonCalcTests: XCTestCase {
             ),
             age: 13.325196027873513,
             illumination: 0.975347904390796,
-            positionAngleOfAxis: Measurement(value: 0.3373622533190958, unit: .radians),
-            brightLimbAngle: Measurement(value: 5.25226644381023, unit: .radians),
-            paralacticAngle: Measurement(value: 0.48702047010300514, unit: .radians)
+            visualAngles: .init(axisPosition: Measurement(value: 0.3373622533190958, unit: .radians), brightLimb: Measurement(value: 5.25226644381023, unit: .radians), paralactic: Measurement(value: 0.48702047010300514, unit: .radians), opticalLibration: (longPass: Measurement(value: 3.806772834960384, unit: .radians), bandPass: Measurement(value: 3.806772834960384, unit: .radians)))
         ))
     }
 }

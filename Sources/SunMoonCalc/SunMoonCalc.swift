@@ -139,15 +139,6 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
     /// Moon illumination (percentage)
     var moonIllumination: Double = .nan
 
-    /// Moon position angle of axis (radians)
-    var moonP: Double = .nan
-
-    /// Moon bright limb angle (radians)
-    var moonBL: Double = .nan
-
-    /// Moon paralactic angle (radians)
-    var moonPar: Double = .nan
-
     func obtainAccurateRiseSetTransit(riseSetJD: Double, index: Int, niter: Int, sun: Bool, twilight: Twilight) -> Double {
         var riseSetJD: Double = riseSetJD,
             step: Double = -1
@@ -158,10 +149,10 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
 
             var out: [Double]
             if sun {
-                out = doCalc(getSun(jd: riseSetJD), jd: riseSetJD, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
+                out = doCalc(getSunCalculationData(jd: riseSetJD), jd: riseSetJD, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
             } else {
-                _ = getSun(jd: riseSetJD)
-                out = doCalc(getMoon(jd: riseSetJD), jd: riseSetJD, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
+                _ = getSunCalculationData(jd: riseSetJD)
+                out = doCalc(getMoonCalculationData(jd: riseSetJD), jd: riseSetJD, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
             }
             step = abs(riseSetJD - out[index])
             riseSetJD = out[index]
@@ -172,55 +163,9 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
         return riseSetJD
     }
 
-    /// Method to calculate values of Moon Disk
-    /// - Returns: [optical librations (lp), lunar coordinates of the centre of the disk (bp), position angle of axis (p), bright limb angle (bl), paralactic angle (par)]
-    func getMoonDiskOrientationAngles(lst: Double, sunRA: Double, sunDec: Double, moonLon: Double, moonLat: Double, moonRA: Double, moonDec: Double, jd: Double) -> [Double] {
-        
-        let t = timeFactor(jd)
-        
-        // Moon's argument of latitude
-        let F = toRadians(93.2720993 + 483_202.0175273 * t - 0.0034029 * t * t - t * t * t / 3_526_000 + t * t * t * t / 863_310_000)
-        
-        // Moon's inclination
-        let I = toRadians(1.54242)
-        
-        // Moon's mean ascending node longitude
-        let omega = toRadians(125.0445550 - 1934.1361849 * t + 0.0020762 * t * t + t * t * t / 467_410 - t * t * t * t / 18_999_000)
-        
-        // Obliquity of ecliptic (approx, better formulae up)
-        let eps = toRadians(23.43929)
-
-        // Obtain optical librations lp and bp
-        let W = moonLon - omega,
-            sinA = sin(W) * cos(moonLat) * cos(I) - sin(moonLat) * sin(I),
-            cosA = cos(W) * cos(moonLat),
-            A = atan2(sinA, cosA),
-            lp = normalizeRadians(A - F),
-            sinbp = -sin(W) * cos(moonLat) * sin(I) - sin(moonLat) * cos(I),
-            bp = asin(sinbp)
-
-        // Obtain position angle of axis p
-        var x = sin(I) * sin(omega),
-            y = sin(I) * cos(omega) * cos(eps) - cos(I) * sin(eps)
-        let w = atan2(x, y),
-            sinp = sqrt(x * x + y * y) * cos(moonRA - w) / cos(bp),
-            p = asin(sinp)
-
-        // Compute bright limb angle bl
-        let bl = (Double.pi + atan2(cos(sunDec) * sin(moonRA - sunRA), cos(sunDec) * sin(moonDec) * cos(moonRA - sunRA) - sin(sunDec) * cos(moonDec)))
-
-        // Paralactic angle par
-        y = sin(lst - moonRA)
-        x = tan(obsLat) * cos(moonDec) - sin(moonDec) * cos(lst - moonRA)
-        let par: Double = x != 0 ? atan2(y, x) : (y / abs(y)) * Double.pi / 2
-
-        return [lp, bp, p, bl, par]
-    }
-    
-    
     
     // First the Sun
-    var out = doCalc(getSun(jd: jd), jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
+    var out = doCalc(getSunCalculationData(jd: jd), jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
     sunAzimuth = out[0]
     sunElevation = out[1]
     sunRise = out[2]
@@ -239,12 +184,12 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
         sunTransitElevation = 0
     } else {
         // Update Sun's maximum elevation
-        out = doCalc(getSun(jd: sunTransit), jd: sunTransit, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
+        out = doCalc(getSunCalculationData(jd: sunTransit), jd: sunTransit, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
         sunTransitElevation = out[5]
     }
 
     // Now Moon
-    out = doCalc(getMoon(jd: jd), jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
+    out = doCalc(getMoonCalculationData(jd: jd), jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
     moonAzimuth = out[0]
     moonElevation = out[1]
     moonRise = out[2]
@@ -265,19 +210,16 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
         moonTransitElevation = 0
     } else {
         // Update Moon's maximum elevation
-        _ = getSun(jd: moonTransit)
-        out = doCalc(getMoon(jd: moonTransit), jd: moonTransit, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
+        _ = getSunCalculationData(jd: moonTransit)
+        out = doCalc(getMoonCalculationData(jd: moonTransit), jd: moonTransit, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
         moonTransitElevation = out[5]
     }
 
-    out = getMoonDiskOrientationAngles(lst: lst, sunRA: sunRA, sunDec: sunDec, moonLon: toRadians(moonAzimuth), moonLat: toRadians(moonElevation), moonRA: moonRA, moonDec: moonDec, jd: jd)
-    moonP = out[2]
-    moonBL = out[3]
-    moonPar = out[4]
+    let moonVisualAngles = getMoonVisualAngles(lst: lst, sunRA: sunRA, sunDec: sunDec, moonLon: toRadians(moonAzimuth), moonLat: toRadians(moonElevation), moonRA: moonRA, moonDec: moonDec, jd: jd, obsLat: obsLat)
     
     return (
         sun: Sun(ephemeris: Ephemeris(azimuth: Measurement(value: sunAzimuth, unit: .radians), elevation: Measurement(value: sunElevation, unit: .radians), rise: Date(julianDay: sunRise)!, set: Date(julianDay: sunSet)!, transit: Date(julianDay: sunTransit)!, transitElevation: Measurement(value: sunTransitElevation, unit: .radians), distance: Measurement(value: sunDistance, unit: .astronomicalUnits))),
-        moon: Moon(ephemeris: Ephemeris(azimuth: Measurement(value: moonAzimuth, unit: .radians), elevation: Measurement(value: moonElevation, unit: .radians), rise: Date(julianDay: moonRise)!, set: Date(julianDay: moonSet)!, transit: Date(julianDay: moonTransit)!, transitElevation: Measurement(value: moonTransitElevation, unit: .radians), distance: Measurement(value: moonDistance, unit: .astronomicalUnits)), age: moonAge, illumination: moonIllumination, positionAngleOfAxis: Measurement(value: moonP, unit: .radians), brightLimbAngle: Measurement(value: moonBL, unit: .radians), paralacticAngle: Measurement(value: moonPar, unit: .radians))
+        moon: Moon(ephemeris: Ephemeris(azimuth: Measurement(value: moonAzimuth, unit: .radians), elevation: Measurement(value: moonElevation, unit: .radians), rise: Date(julianDay: moonRise)!, set: Date(julianDay: moonSet)!, transit: Date(julianDay: moonTransit)!, transitElevation: Measurement(value: moonTransitElevation, unit: .radians), distance: Measurement(value: moonDistance, unit: .astronomicalUnits)), age: moonAge, illumination: moonIllumination, visualAngles: moonVisualAngles)
     )
 }
 
@@ -294,14 +236,8 @@ public struct Moon: Equatable {
     /// Illumination (percentage)
     let illumination: Double
 
-    /// Position angle of axis (radians)
-    let positionAngleOfAxis: Measurement<UnitAngle>
-
-    /// Bright limb angle (radians)
-    let brightLimbAngle: Measurement<UnitAngle>
-
-    /// Paralactic angle (radians)
-    let paralacticAngle: Measurement<UnitAngle>
+    /// Angles for drawing
+    let visualAngles: VisualAngles
 }
 
 public struct Ephemeris: Equatable {
@@ -638,7 +574,7 @@ func getSunAnomaly(jd: Double) -> Double {
     return toRadians(357.5291 + 35999.0503 * t - 0.0001559 * t * t - 4.8e-07 * t * t * t)
 }
 
-func getSun(jd: Double) -> CalculationData {
+func getSunCalculationData(jd: Double) -> CalculationData {
     let t = timeFactor(jd)
     
     let sanomaly = getSunAnomaly(jd: jd)
@@ -654,7 +590,7 @@ func getSun(jd: Double) -> CalculationData {
 
 
 
-func getMoon(jd: Double) -> CalculationData {
+func getMoonCalculationData(jd: Double) -> CalculationData {
     let t = timeFactor(jd)
 
     // MOON PARAMETERS (Formulae from "Calendrical Calculations")
@@ -724,6 +660,71 @@ func getMoon(jd: Double) -> CalculationData {
 
 // Get accurate Moon age
 func getMoonAge(jd: Double) -> Double {
-    let data = getMoon(jd: jd)
+    let data = getMoonCalculationData(jd: jd)
     return normalizeRadians(toRadians(data.longitude - getSunLongitude(jd: jd))) * LUNAR_CYCLE_DAYS / (2 * .pi)
+}
+
+struct VisualAngles : Equatable {
+    static func == (lhs: VisualAngles, rhs: VisualAngles) -> Bool {
+        return lhs.axisPosition == rhs.axisPosition && lhs.brightLimb == rhs.brightLimb && lhs.paralactic == rhs.paralactic && lhs.opticalLibration.bandPass == rhs.opticalLibration.bandPass && lhs.opticalLibration.longPass == rhs.opticalLibration.longPass
+    }
+    
+    /// Position angle of axis (radians)
+    let axisPosition: Measurement<UnitAngle>
+    
+    /// Bright limb angle (radians)
+    let brightLimb: Measurement<UnitAngle>
+    
+    /// Paralactic angle (radians)
+    let paralactic: Measurement<UnitAngle>
+    
+    let opticalLibration: (longPass: Measurement<UnitAngle>, bandPass: Measurement<UnitAngle>)
+}
+
+/// Method to calculate values of Moon Disk
+/// - Returns: [optical librations (lp), lunar coordinates of the centre of the disk (bp), position angle of axis (p), bright limb angle (bl), paralactic angle (par)]
+func getMoonVisualAngles(lst: Double, sunRA: Double, sunDec: Double, moonLon: Double, moonLat: Double, moonRA: Double, moonDec: Double, jd: Double, obsLat: Double) -> VisualAngles {
+    
+    let t = timeFactor(jd)
+    
+    // Moon's argument of latitude
+    let F = toRadians(93.2720993 + 483_202.0175273 * t - 0.0034029 * t * t - t * t * t / 3_526_000 + t * t * t * t / 863_310_000)
+    
+    // Moon's inclination
+    let I = toRadians(1.54242)
+    
+    // Moon's mean ascending node longitude
+    let omega = toRadians(125.0445550 - 1934.1361849 * t + 0.0020762 * t * t + t * t * t / 467_410 - t * t * t * t / 18_999_000)
+    
+    // Obliquity of ecliptic (approx, better formulae up)
+    let eps = toRadians(23.43929)
+
+    // Obtain optical librations lp and bp
+    let W = moonLon - omega,
+        sinA = sin(W) * cos(moonLat) * cos(I) - sin(moonLat) * sin(I),
+        cosA = cos(W) * cos(moonLat),
+        A = atan2(sinA, cosA),
+        lp = normalizeRadians(A - F),
+        sinbp = -sin(W) * cos(moonLat) * sin(I) - sin(moonLat) * cos(I),
+        bp = asin(sinbp)
+
+    // Obtain position angle of axis p
+    var x = sin(I) * sin(omega),
+        y = sin(I) * cos(omega) * cos(eps) - cos(I) * sin(eps)
+    let w = atan2(x, y),
+        sinp = sqrt(x * x + y * y) * cos(moonRA - w) / cos(bp),
+        p = asin(sinp)
+
+    // Compute bright limb angle bl
+    let bl = (Double.pi + atan2(cos(sunDec) * sin(moonRA - sunRA), cos(sunDec) * sin(moonDec) * cos(moonRA - sunRA) - sin(sunDec) * cos(moonDec)))
+
+    // Paralactic angle par
+    y = sin(lst - moonRA)
+    x = tan(obsLat) * cos(moonDec) - sin(moonDec) * cos(lst - moonRA)
+    let par: Double = x != 0 ? atan2(y, x) : (y / abs(y)) * Double.pi / 2
+
+    return VisualAngles(
+        axisPosition: .init(value: p, unit: .radians), brightLimb: .init(value: bl, unit: .radians), paralactic: .init(value: par, unit: .radians),
+        opticalLibration: (.init(value: lp, unit: .radians), .init(value: lp, unit: .radians))
+    )
 }
