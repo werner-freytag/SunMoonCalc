@@ -101,8 +101,8 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
     let moonAge = getMoonAge(jd: jd)
 
     return (
-        sun: Sun(ephemeris: Ephemeris(azimuth: sunData.azimuth.toRadiansMeasurement, elevation: sunData.elevation.toRadiansMeasurement, rise: sunData.rise?.julianToDate, set: sunData.set?.julianToDate, transit: sunData.transit?.julianToDate, transitElevation: sunData.transitElevation.toRadiansMeasurement, distance: Measurement(value: sunData.distance, unit: .astronomicalUnits))),
-        moon: Moon(ephemeris: Ephemeris(azimuth: moonData.azimuth.toRadiansMeasurement, elevation: moonData.elevation.toRadiansMeasurement, rise: moonData.rise?.julianToDate, set: moonData.set?.julianToDate, transit: moonData.transit?.julianToDate, transitElevation: moonData.transitElevation.toRadiansMeasurement, distance: Measurement(value: moonData.distance, unit: .astronomicalUnits)), age: moonAge, illumination: moonIllumination, visualAngles: moonVisualAngles)
+        sun: Sun(ephemeris: Ephemeris(data: sunData)),
+        moon: Moon(ephemeris: Ephemeris(data: moonData), age: moonAge, illumination: moonIllumination, visualAngles: moonVisualAngles)
     )
 }
 
@@ -701,4 +701,10 @@ func calculateEphemerisData(dataProvider: CalculationDataProvider, niter: Int, j
     }
     
     return data
+}
+
+extension Ephemeris {
+    init(data: EphemerisData) {
+        self.init(azimuth: data.azimuth.toRadiansMeasurement, elevation: data.elevation.toRadiansMeasurement, rise: data.rise?.julianToDate, set: data.set?.julianToDate, transit: data.transit?.julianToDate, transitElevation: data.transitElevation.toRadiansMeasurement, distance: Measurement<UnitLength>(value: data.distance, unit: .astronomicalUnits))
+    }
 }
