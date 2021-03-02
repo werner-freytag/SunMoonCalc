@@ -83,10 +83,9 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
         throw Errors.invalidLocation(longitude: longitude, latitude: latitude)
     }
 
-    let jd = toJulian(date)
-
     /// INPUT VARIABLES
     
+    let jd = toJulian(date)
     let obsLon : Double = toRadians(longitude)
     let obsLat: Double = toRadians(latitude)
     
@@ -148,51 +147,6 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
 
     /// Moon paralactic angle (radians)
     var moonPar: Double = .nan
-
-
-    // SUN PARAMETERS (Formulae from "Calendrical Calculations")
-    
-    
-    /// Correction to the mean ecliptic longitude
-    func getSunLongitudeCorrection(jd: Double) -> Double {
-        let t = timeFactor(jd)
-        let sanomaly = getSunAnomaly(jd: jd)
-        var c: Double = (1.9146 - 0.004817 * t - 0.000014 * t * t) * sin(sanomaly)
-        c = c + (0.019993 - 0.000101 * t) * sin(2 * sanomaly)
-        c = c + 0.00029 * sin(3 * sanomaly)
-        
-        return c
-    }
-    
-    func getSunLongitude(jd: Double) -> Double {
-        let t = timeFactor(jd)
-        let longitudeCorrection = getSunLongitudeCorrection(jd: jd)
-        
-        // Now, let calculate nutation and aberration
-        let M1 = toRadians(124.90 - 1934.134 * t + 0.002063 * t * t),
-            M2 = toRadians(201.11 + 72001.5377 * t + 0.00057 * t * t),
-            aberration = -0.00569 - 0.0047785 * sin(M1) - 0.0003667 * sin(M2)
-
-        return 280.46645 + 36000.76983 * t + 0.0003032 * t * t + longitudeCorrection + aberration
-    }
-
-    func getSunAnomaly(jd: Double) -> Double {
-        let t = timeFactor(jd)
-        return toRadians(357.5291 + 35999.0503 * t - 0.0001559 * t * t - 4.8e-07 * t * t * t)
-    }
-    
-    func getSun(jd: Double) -> CalculationData {
-        let t = timeFactor(jd)
-        
-        let sanomaly = getSunAnomaly(jd: jd)
-        let slongitude = getSunLongitude(jd: jd)
-        
-        let slatitude: Double = 0, // Sun's ecliptic latitude is always negligible
-            ecc: Double = 0.016708617 - 4.2037e-05 * t - 1.236e-07 * t * t, // Eccentricity
-            v: Double = sanomaly + toRadians(getSunLongitudeCorrection(jd: jd)), // True anomaly
-            sdistance: Double = 1.000001018 * (1 - ecc * ecc) / (1 + ecc * cos(v)) // In UA
-        return (slatitude, slongitude, sdistance, atan(696_000 / (AU * sdistance)))
-    }
 
     func getMoon(jd: Double) -> CalculationData {
         let t = timeFactor(jd)
@@ -722,3 +676,55 @@ func timeFactor(_ jd: Double) -> Double {
 
     return (jd + TTminusUT / SECONDS_PER_DAY - J2000) / JULIAN_DAYS_PER_CENTURY
 }
+
+
+
+
+
+// SUN PARAMETERS (Formulae from "Calendrical Calculations")
+
+
+/// Correction to the mean ecliptic longitude
+func getSunLongitudeCorrection(jd: Double) -> Double {
+    let t = timeFactor(jd)
+    let sanomaly = getSunAnomaly(jd: jd)
+    var c: Double = (1.9146 - 0.004817 * t - 0.000014 * t * t) * sin(sanomaly)
+    c = c + (0.019993 - 0.000101 * t) * sin(2 * sanomaly)
+    c = c + 0.00029 * sin(3 * sanomaly)
+    
+    return c
+}
+
+func getSunLongitude(jd: Double) -> Double {
+    let t = timeFactor(jd)
+    let longitudeCorrection = getSunLongitudeCorrection(jd: jd)
+    
+    // Now, let calculate nutation and aberration
+    let M1 = toRadians(124.90 - 1934.134 * t + 0.002063 * t * t),
+        M2 = toRadians(201.11 + 72001.5377 * t + 0.00057 * t * t),
+        aberration = -0.00569 - 0.0047785 * sin(M1) - 0.0003667 * sin(M2)
+
+    return 280.46645 + 36000.76983 * t + 0.0003032 * t * t + longitudeCorrection + aberration
+}
+
+func getSunAnomaly(jd: Double) -> Double {
+    let t = timeFactor(jd)
+    return toRadians(357.5291 + 35999.0503 * t - 0.0001559 * t * t - 4.8e-07 * t * t * t)
+}
+
+func getSun(jd: Double) -> CalculationData {
+    let t = timeFactor(jd)
+    
+    let sanomaly = getSunAnomaly(jd: jd)
+    let slongitude = getSunLongitude(jd: jd)
+    
+    let slatitude: Double = 0, // Sun's ecliptic latitude is always negligible
+        ecc: Double = 0.016708617 - 4.2037e-05 * t - 1.236e-07 * t * t, // Eccentricity
+        v: Double = sanomaly + toRadians(getSunLongitudeCorrection(jd: jd)), // True anomaly
+        sdistance: Double = 1.000001018 * (1 - ecc * ecc) / (1 + ecc * cos(v)) // In UA
+    return (slatitude, slongitude, sdistance, atan(696_000 / (AU * sdistance)))
+}
+
+
+
+
