@@ -26,17 +26,15 @@ public struct DiskOrientationAngles: Equatable {
 
 /// Method to calculate values of Moon Disk
 /// - Returns: [optical librations (lp), lunar coordinates of the centre of the disk (bp), position angle of axis (p), bright limb angle (bl), paralactic angle (par)]
-public func getMoonDiskOrientationAngles(date: Date, latitude: Double, longitude: Double, twilight: Twilight = .Horizon34arcmin) -> DiskOrientationAngles {
+public func getMoonDiskOrientationAngles(date: Date, latitude: Double, longitude: Double, twilight: Twilight = .horizon34arcmin) -> DiskOrientationAngles {
     let jd = JulianDate(date: date)
     let obsLon = toRadians(longitude)
     let obsLat = toRadians(latitude)
 
     /// OUTPUT VARIABLES
 
-    let calculation = EphemerisCalculation(jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
-
-    let sunData = calculation.calculate(SunCalculation.self)
-    let moonData = calculation.calculate(MoonCalculation.self)
+    let sunData = SunCalculation(jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight).ephemerisData
+    let moonData = MoonCalculation(jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight).ephemerisData
 
     let lst = sunData.localApparentSiderealTime
     let sunRA = sunData.rightAscension

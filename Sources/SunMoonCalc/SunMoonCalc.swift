@@ -43,22 +43,22 @@ public enum Twilight {
     /// center of the object is at -18 degrees of geometrical elevation below the
     /// astronomical horizon. At this time astronomical observations are possible
     /// because the sky is dark enough
-    case Astronomical
+    case astronomical
 
     /// Event ID for calculation of rising and setting times for nautical
     /// twilight. In this case, the calculated time will be the time when the
     /// center of the object is at -12 degrees of geometric elevation below the
     /// astronomical horizon
-    case Nautical
+    case nautical
 
     /// Event ID for calculation of rising and setting times for civil twilight.
     /// In this case, the calculated time will be the time when the center of the
     /// object is at -6 degrees of geometric elevation below the astronomical
     /// horizon
-    case Civil
+    case civil
 
     /// The standard value of 34' for the refraction at the local horizon
-    case Horizon34arcmin
+    case horizon34arcmin
 }
 
 typealias ObjectLocation = (latitude: Double, longitude: Double, distance: Double, angularRadius: Double)
@@ -76,7 +76,7 @@ public struct Location {
 ///   - twilight: twilight configuration
 /// - Throws: invalidJulianDay if the date does not exists
 /// - Returns: Sun and moon information
-public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twilight: Twilight = .Horizon34arcmin) throws -> (sun: Sun, moon: Moon) {
+public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twilight: Twilight = .horizon34arcmin) throws -> (sun: Sun, moon: Moon) {
     /// INPUT VARIABLES
 
     let jd = JulianDate(date: date)
@@ -85,18 +85,43 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
 
     /// OUTPUT VARIABLES
 
-    let calculation = EphemerisCalculation(jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
-    let sunData = calculation.calculate(SunCalculation.self)
-    let moonData = calculation.calculate(MoonCalculation.self)
+    let sunData = SunCalculation(jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight).ephemerisData
+    let moonData = MoonCalculation(jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight).ephemerisData
 
-    let moonAge = MoonCalculation(jd: jd).age
-    let moonIllumination = (1 - cos(acos(sin(sunData.declination) * sin(moonData.declination) + cos(sunData.declination) * cos(moonData.declination) * cos(moonData.rightAscension - sunData.rightAscension)))) * 0.5
+    let moonAge = MoonCalculation(jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight).age
+    let moonIllumination = MoonCalculation(jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight).illumination
 
     return (
         sun: Sun(ephemeris: Ephemeris(data: sunData)),
         moon: Moon(ephemeris: Ephemeris(data: moonData), age: moonAge, illumination: moonIllumination)
     )
 }
+
+/*
+class SunEphemeris {
+    static let calculation = SunCalculation.self
+    
+    init(date: Date, location: Location) {
+        self.date = date
+        self.location = location
+    }
+    
+    let date: Date
+    let location: Location
+    var twilight: Twilight = .horizon34arcmin
+    
+    lazy var ephemeris: Ephemeris = {
+        let jd = JulianDate(date: date)
+        let obsLon = location.longitude.converted(to: .radians).value
+        let obsLat = location.latitude.converted(to: .radians).value
+
+        let calculation = EphemerisCalculation(jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
+        let data = calculation.calculate(Self.calculation)
+
+        return Ephemeris(data: data)
+    }()
+}
+*/
 
 public struct Sun: Equatable {
     let ephemeris: Ephemeris
@@ -243,33 +268,49 @@ extension Double {
     }
 }
 
-struct EphemerisCalculation {
+class ObjectCalculation {
+
+    /// INPUT VARIABLES
     let jd: JulianDate
     let obsLat: Double
     let obsLon: Double
     let twilight: Twilight
 
-    func calculate(_ resultType: ObjectCalculation.Type) -> EphemerisData {
-        var data = calculateEphemerisData(resultType, jd: jd)
+    required init(jd: JulianDate, obsLat: Double, obsLon: Double, twilight: Twilight) {
+        self.jd = jd
+        self.obsLat = obsLat
+        self.obsLon = obsLon
+        self.twilight = twilight
+    }
+
+    fileprivate lazy var t: Double = jd.timeFactor
+
+    class var accuracyIterationsOfRiseSetTransit: Int { 3 }
+
+    var objectLocation: ObjectLocation {
+        preconditionFailure("Must be implemented in child classes")
+    }
+    
+    lazy var ephemerisData: EphemerisData = {
+        var ephemerisData = calculateEphemerisData()
 
         for keyPath in [\EphemerisData.rise, \EphemerisData.set, \EphemerisData.transit] {
-            data[keyPath: keyPath] = obtainAccurateRiseSetTransit(resultType, data: data, keyPath: keyPath, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
+            ephemerisData[keyPath: keyPath] = obtainAccurateRiseSetTransit(data: ephemerisData, keyPath: keyPath)
         }
 
         // Update maximum elevation
-        if let transit = data.transit {
-            let calculationData = calculateEphemerisData(resultType, jd: transit)
-            data.transitElevation = calculationData.transitElevation
+        if let transit = ephemerisData.transit {
+            let calculationData = Self(jd: transit, obsLat: obsLat, obsLon: obsLon, twilight: twilight).calculateEphemerisData()
+            ephemerisData.transitElevation = calculationData.transitElevation
         } else {
-            data.transitElevation = 0
+            ephemerisData.transitElevation = 0
         }
 
-        return data
-    }
+        return ephemerisData
+    }()
 
-    func calculateEphemerisData(_ calculationType: ObjectCalculation.Type, jd: JulianDate) -> EphemerisData {
-        let data = calculationType.init(jd: jd).objectLocation
-
+    private func calculateEphemerisData() -> EphemerisData {
+        let data = objectLocation
         let t = jd.timeFactor
 
         // Ecliptic to equatorial coordinates
@@ -350,17 +391,17 @@ struct EphemerisCalculation {
         }
 
         switch twilight {
-        case .Horizon34arcmin:
+        case .horizon34arcmin:
             // Rise, set, transit times, taking into account Sun/Moon angular radius
             // The 34' factor is the standard refraction at horizon.
             // Removing angular radius will do calculations for the center of the disk instead
             // of the upper limb.
             tmp = -toRadians(34 / 60) - data.angularRadius
-        case .Civil:
+        case .civil:
             tmp = toRadians(-6)
-        case .Nautical:
+        case .nautical:
             tmp = toRadians(-12)
-        case .Astronomical:
+        case .astronomical:
             tmp = toRadians(-18)
         }
 
@@ -418,13 +459,13 @@ struct EphemerisCalculation {
         return EphemerisData(azimuth: azi, elevation: alt, rise: rise, set: set, transit: transit, transitElevation: transitAltitude, rightAscension: ra, declination: dec, distance: dist, localApparentSiderealTime: lst)
     }
 
-    func obtainAccurateRiseSetTransit(_ calculationType: ObjectCalculation.Type, data: EphemerisData, keyPath: KeyPath<EphemerisData, JulianDate?>, obsLat: Double, obsLon: Double, twilight: Twilight) -> JulianDate? {
+    private func obtainAccurateRiseSetTransit(data: EphemerisData, keyPath: KeyPath<EphemerisData, JulianDate?>) -> JulianDate? {
         guard var jd = data[keyPath: keyPath] else { return nil } // nil means  no rise/set from that location
         var step: Double = -1
 
-        for _ in 0 ..< calculationType.accuracyIterationsOfRiseSetTransit {
-            let data = calculateEphemerisData(calculationType, jd: jd)
-            guard let newValue = data[keyPath: keyPath] else { return nil }
+        for _ in 0 ..< Self.accuracyIterationsOfRiseSetTransit {
+            let ephemerisData = Self(jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight).calculateEphemerisData()
+            guard let newValue = ephemerisData[keyPath: keyPath] else { return nil }
             step = abs(Double(jd) - Double(newValue))
             jd = newValue
         }
@@ -433,21 +474,6 @@ struct EphemerisCalculation {
         guard step <= 1 / SECONDS_PER_DAY else { return nil }
 
         return jd
-    }
-}
-
-class ObjectCalculation {
-    required init(jd: JulianDate) {
-        self.jd = jd
-    }
-
-    fileprivate let jd: JulianDate
-    fileprivate lazy var t: Double = jd.timeFactor
-
-    class var accuracyIterationsOfRiseSetTransit: Int { 3 }
-
-    var objectLocation: ObjectLocation {
-        preconditionFailure("Must be implemented in child classes")
     }
 }
 
@@ -488,10 +514,10 @@ class SunCalculation: ObjectCalculation {
 class MoonCalculation: ObjectCalculation {
     override class var accuracyIterationsOfRiseSetTransit: Int { 5 }
 
-    private lazy var sun = SunCalculation(jd: jd)
+    private lazy var sun = SunCalculation(jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
 
     // Anomalistic phase
-    lazy var anomaly: Double = {
+    private lazy var anomaly: Double = {
         toRadians(134.9634114 + 477_198.8676313 * t + 0.008997 * t * t + t * t * t / 69699 - t * t * t * t / 14_712_000)
     }()
 
@@ -561,6 +587,13 @@ class MoonCalculation: ObjectCalculation {
     var age: Double {
         normalizeRadians(toRadians(objectLocation.longitude - sun.longitude)) * LUNAR_CYCLE_DAYS / (2 * .pi)
     }
+    
+    lazy var illumination: Double = {
+        let sun = sun.ephemerisData
+        let moon = ephemerisData
+
+        return (1 - cos(acos(sin(sun.declination) * sin(moon.declination) + cos(sun.declination) * cos(moon.declination) * cos(moon.rightAscension - sun.rightAscension)))) * 0.5
+    }()
 }
 
 extension Double {
