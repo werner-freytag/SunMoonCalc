@@ -90,7 +90,6 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
     let moonData = calculation.calculate(MoonCalculation.self)
 
     let moonAge = MoonCalculation(jd: jd).age
-
     let moonIllumination = (1 - cos(acos(sin(sunData.declination) * sin(moonData.declination) + cos(sunData.declination) * cos(moonData.declination) * cos(moonData.rightAscension - sunData.rightAscension)))) * 0.5
 
     return (
@@ -152,23 +151,18 @@ public extension Ephemeris {
 /// - Parameter r: Angle in radians
 /// - Returns: Reduced angle in radians
 func normalizeRadians(_ r: Double) -> Double {
-    var r: Double = r
-    if r < 0, r >= -2 * .pi {
+    switch r {
+    case ..<(-2 * .pi):
+        return r + 2 * .pi * (floor(-r / (2 * .pi)) + 1)
+    case (-2 * .pi)..<0:
         return r + 2 * .pi
-    }
-    if r >= 2 * Double.pi, r < 4 * .pi {
-        return r - 2 * .pi
-    }
-    if r >= 0, r < 2 * .pi {
+    case 0..<(2 * .pi):
         return r
+    case (2 * .pi)..<(4 * .pi):
+        return r - 2 * .pi
+    default:
+        return r - 2 * .pi * floor(r / (2 * .pi))
     }
-
-    r -= 2 * .pi * floor(r * 1 / (2 * .pi))
-    if r < 0 {
-        r += 2 * .pi
-    }
-
-    return r
 }
 
 struct EphemerisData {
