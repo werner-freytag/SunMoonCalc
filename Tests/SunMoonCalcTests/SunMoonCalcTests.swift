@@ -38,7 +38,7 @@ final class SunMoonCalcTests: XCTestCase {
             illumination: 0.975347904390796
         ))
     }
-    
+
     func testMoonDiskOrientation() {
         let date = dateFormatter.date(from: "2021-02-26 00:00:00 +0000")!
         let result = getMoonDiskOrientationAngles(date: date, latitude: 48.137154, longitude: 11.576124)

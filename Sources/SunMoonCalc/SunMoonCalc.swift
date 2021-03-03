@@ -63,7 +63,6 @@ public enum Twilight {
 
 typealias ObjectLocation = (latitude: Double, longitude: Double, distance: Double, angularRadius: Double)
 
-
 public struct Location {
     let latitude: Measurement<UnitAngle>
     let longitude: Measurement<UnitAngle>
@@ -78,18 +77,17 @@ public struct Location {
 /// - Throws: invalidJulianDay if the date does not exists
 /// - Returns: Sun and moon information
 public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twilight: Twilight = .Horizon34arcmin) throws -> (sun: Sun, moon: Moon) {
-
     /// INPUT VARIABLES
 
     let jd = JulianDate(date: date)
     let obsLon = toRadians(longitude)
     let obsLat = toRadians(latitude)
-    
+
     /// OUTPUT VARIABLES
-    
+
     let sunData = ObjectCalculation.calculate(SunCalculationResult.self, jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
     let moonData = ObjectCalculation.calculate(MoonCalculationResult.self, jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
-    
+
     let moonAge = MoonCalculationResult(jd: jd).age
 
     let moonIllumination = (1 - cos(acos(sin(sunData.declination) * sin(moonData.declination) + cos(sunData.declination) * cos(moonData.declination) * cos(moonData.rightAscension - sunData.rightAscension)))) * 0.5
@@ -173,7 +171,6 @@ func normalizeRadians(_ r: Double) -> Double {
 }
 
 struct EphemerisData {
-    
     /// azimuth (radians)
     let azimuth: Double
 
@@ -194,23 +191,22 @@ struct EphemerisData {
 
     /// topographic right ascension  (radians)
     let rightAscension: Double
-    
+
     /// topographic declination  (radians)
     let declination: Double
-    
+
     /// distance (AUs)
     let distance: Double
-    
+
     /// local apparent sidereal time (Julian days as per UTC)
     let localApparentSiderealTime: Double
 }
-
 
 func calculateEphemerisData(_ calculation: ObjectCalculationResult.Type, jd: JulianDate, obsLat: Double, obsLon: Double, twilight: Twilight) -> EphemerisData {
     let data = calculation.init(jd: jd).objectLocation
 
     let t = jd.timeFactor
-    
+
     // Ecliptic to equatorial coordinates
     let t2: Double = t / 100
     var tmp: Double = t2 * (27.87 + t2 * (5.79 + t2 * 2.45))
@@ -360,14 +356,14 @@ func calculateEphemerisData(_ calculation: ObjectCalculationResult.Type, jd: Jul
 func obtainAccurateRiseSetTransit(_ calculation: ObjectCalculationResult.Type, data: EphemerisData, keyPath: KeyPath<EphemerisData, JulianDate?>, obsLat: Double, obsLon: Double, twilight: Twilight) -> JulianDate? {
     guard var jd = data[keyPath: keyPath] else { return nil } // nil means  no rise/set from that location
     var step: Double = -1
-    
+
     for _ in 0 ..< calculation.accuracyIterationsOfRiseSetTransit {
         let data = calculateEphemerisData(calculation, jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
         guard let newValue = data[keyPath: keyPath] else { return nil }
         step = abs(Double(jd) - Double(newValue))
         jd = newValue
     }
-    
+
     // did not converge => without rise/set/transit in this date
     guard step <= 1 / SECONDS_PER_DAY else { return nil }
 
@@ -376,12 +372,12 @@ func obtainAccurateRiseSetTransit(_ calculation: ObjectCalculationResult.Type, d
 
 class JulianDate {
     let julianDays: Double
-    
+
     lazy var date: Date = {
         let timeInterval = (julianDays + 0.5 - J1970) * SECONDS_PER_DAY
         return Date(timeIntervalSince1970: timeInterval)
     }()
-    
+
     init(_ julianDays: Double) {
         self.julianDays = julianDays
     }
@@ -395,22 +391,22 @@ class JulianDate {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(abbreviation: "UTC")!
         let dc = calendar.dateComponents([.year, .month, .day], from: date)
-        
+
         guard let year = dc.year, let month = dc.month, let day = dc.day, year > -600, year < 2200 else { return 0 }
-        
+
         let x = Double(year) + (Double(month) - 1 + Double(day) / 30) / 12
         let x2 = x * x, x3 = x2 * x, x4 = x3 * x
         if year < 1600 {
             return 10535.328003326353 - 9.995238627481024 * x + 0.003067307630020489 * x2 - 7.76340698361363e-6 * x3 + 3.1331045394223196e-9 * x4 +
                 8.225530854405553e-12 * x2 * x3 - 7.486164715632051e-15 * x4 * x2 + 1.9362461549678834e-18 * x4 * x3 - 8.489224937827653e-23 * x4 * x4
         }
-        
+
         return -1_027_175.3477559977 + 2523.256625418965 * x - 1.885686849058459 * x2 + 5.869246227888417e-5 * x3 + 3.3379295816475025e-7 * x4 +
-                1.7758961671447929e-10 * x2 * x3 - 2.7889902806153024e-13 * x2 * x4 + 1.0224295822336825e-16 * x3 * x4 - 1.2528102370680435e-20 * x4 * x4
+            1.7758961671447929e-10 * x2 * x3 - 2.7889902806153024e-13 * x2 * x4 + 1.0224295822336825e-16 * x3 * x4 - 1.2528102370680435e-20 * x4 * x4
     }()
 
     lazy var timeFactor: Double = {
-        return (julianDays + TTminusUT / SECONDS_PER_DAY - J2000) / JULIAN_DAYS_PER_CENTURY
+        (julianDays + TTminusUT / SECONDS_PER_DAY - J2000) / JULIAN_DAYS_PER_CENTURY
     }()
 }
 
@@ -420,16 +416,14 @@ extension Double {
     }
 }
 
-class ObjectCalculation {
-  
+enum ObjectCalculation {
     static func calculate(_ resultType: ObjectCalculationResult.Type, jd: JulianDate, obsLat: Double, obsLon: Double, twilight: Twilight) -> EphemerisData {
-
         var data = calculateEphemerisData(resultType, jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
 
         for keyPath in [\EphemerisData.rise, \EphemerisData.set, \EphemerisData.transit] {
             data[keyPath: keyPath] = obtainAccurateRiseSetTransit(resultType, data: data, keyPath: keyPath, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
         }
-        
+
         // Update maximum elevation
         if let transit = data.transit {
             let calculationData = calculateEphemerisData(resultType, jd: transit, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
@@ -437,7 +431,7 @@ class ObjectCalculation {
         } else {
             data.transitElevation = 0
         }
-        
+
         return data
     }
 }
@@ -459,14 +453,13 @@ class ObjectCalculationResult {
 
 // SUN PARAMETERS (Formulae from "Calendrical Calculations")
 
-class SunCalculationResult : ObjectCalculationResult {
-    
+class SunCalculationResult: ObjectCalculationResult {
     /// Correction to the mean ecliptic longitude
     private lazy var longitudeCorrection: Double = {
         var c: Double = (1.9146 - 0.004817 * t - 0.000014 * t * t) * sin(anomaly)
         c = c + (0.019993 - 0.000101 * t) * sin(2 * anomaly)
         c = c + 0.00029 * sin(3 * anomaly)
-        
+
         return c
     }()
 
@@ -480,7 +473,7 @@ class SunCalculationResult : ObjectCalculationResult {
     }()
 
     lazy var anomaly: Double = {
-        return toRadians(357.5291 + 35999.0503 * t - 0.0001559 * t * t - 4.8e-07 * t * t * t)
+        toRadians(357.5291 + 35999.0503 * t - 0.0001559 * t * t - 4.8e-07 * t * t * t)
     }()
 
     override var objectLocation: ObjectLocation {
@@ -492,16 +485,16 @@ class SunCalculationResult : ObjectCalculationResult {
     }
 }
 
-class MoonCalculationResult : ObjectCalculationResult {
+class MoonCalculationResult: ObjectCalculationResult {
     override class var accuracyIterationsOfRiseSetTransit: Int { 5 }
 
     private lazy var sun = SunCalculationResult(jd: jd)
-    
+
     // Anomalistic phase
     lazy var anomaly: Double = {
-        return toRadians(134.9634114 + 477_198.8676313 * t + 0.008997 * t * t + t * t * t / 69699 - t * t * t * t / 14_712_000)
+        toRadians(134.9634114 + 477_198.8676313 * t + 0.008997 * t * t + t * t * t / 69699 - t * t * t * t / 14_712_000)
     }()
-    
+
     override var objectLocation: ObjectLocation {
         // MOON PARAMETERS (Formulae from "Calendrical Calculations")
         let phase: Double = normalizeRadians(toRadians(297.8502042 + 445_267.1115168 * t - 0.00163 * t * t + t * t * t / 538_841 - t * t * t * t / 65_194_000))
@@ -513,7 +506,7 @@ class MoonCalculationResult : ObjectCalculationResult {
         let E: Double = 1 - (0.002495 + 7.52e-06 * (t + 1)) * (t + 1)
 
         let sanomaly = sun.anomaly
-        
+
         // Now longitude, with the three main correcting terms of evection,
         // variation, and equation of year, plus other terms (error<0.01 deg)
         // P. Duffet's MOON program taken as reference

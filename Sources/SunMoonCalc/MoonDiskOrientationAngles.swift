@@ -1,43 +1,41 @@
 //
 //  File.swift
-//  
+//
 //
 //  Created by Werner on 03.03.21.
 //
 
 import Foundation
 
-
-public struct DiskOrientationAngles : Equatable {
+public struct DiskOrientationAngles: Equatable {
     public static func == (lhs: DiskOrientationAngles, rhs: DiskOrientationAngles) -> Bool {
         return lhs.axisPosition == rhs.axisPosition && lhs.brightLimb == rhs.brightLimb && lhs.paralactic == rhs.paralactic && lhs.opticalLibration.bandPass == rhs.opticalLibration.bandPass && lhs.opticalLibration.longPass == rhs.opticalLibration.longPass
     }
-    
+
     /// Position angle of axis (radians)
     let axisPosition: Measurement<UnitAngle>
-    
+
     /// Bright limb angle (radians)
     let brightLimb: Measurement<UnitAngle>
-    
+
     /// Paralactic angle (radians)
     let paralactic: Measurement<UnitAngle>
-    
+
     let opticalLibration: (longPass: Measurement<UnitAngle>, bandPass: Measurement<UnitAngle>)
 }
 
 /// Method to calculate values of Moon Disk
 /// - Returns: [optical librations (lp), lunar coordinates of the centre of the disk (bp), position angle of axis (p), bright limb angle (bl), paralactic angle (par)]
 public func getMoonDiskOrientationAngles(date: Date, latitude: Double, longitude: Double, twilight: Twilight = .Horizon34arcmin) -> DiskOrientationAngles {
-    
     let jd = JulianDate(date: date)
     let obsLon = toRadians(longitude)
     let obsLat = toRadians(latitude)
-    
+
     /// OUTPUT VARIABLES
-    
+
     let sunData = calculateEphemerisData(SunCalculationResult.self, jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
     let moonData = calculateEphemerisData(MoonCalculationResult.self, jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
-    
+
     let lst = sunData.localApparentSiderealTime
     let sunRA = sunData.rightAscension
     let sunDec = sunData.declination
@@ -45,18 +43,18 @@ public func getMoonDiskOrientationAngles(date: Date, latitude: Double, longitude
     let moonLat = toRadians(moonData.elevation)
     let moonRA = moonData.rightAscension
     let moonDec = moonData.declination
-    
+
     let t = jd.timeFactor
-    
+
     // Moon's argument of latitude
     let F = toRadians(93.2720993 + 483_202.0175273 * t - 0.0034029 * t * t - t * t * t / 3_526_000 + t * t * t * t / 863_310_000)
-    
+
     // Moon's inclination
     let I = toRadians(1.54242)
-    
+
     // Moon's mean ascending node longitude
     let omega = toRadians(125.0445550 - 1934.1361849 * t + 0.0020762 * t * t + t * t * t / 467_410 - t * t * t * t / 18_999_000)
-    
+
     // Obliquity of ecliptic (approx, better formulae up)
     let eps = toRadians(23.43929)
 
@@ -89,4 +87,3 @@ public func getMoonDiskOrientationAngles(date: Date, latitude: Double, longitude
         opticalLibration: (.init(value: lp, unit: .radians), .init(value: lp, unit: .radians))
     )
 }
-
