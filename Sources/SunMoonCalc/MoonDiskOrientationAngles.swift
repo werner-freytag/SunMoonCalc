@@ -33,8 +33,10 @@ public func getMoonDiskOrientationAngles(date: Date, latitude: Double, longitude
 
     /// OUTPUT VARIABLES
 
-    let sunData = calculateEphemerisData(SunCalculationResult.self, jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
-    let moonData = calculateEphemerisData(MoonCalculationResult.self, jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
+    let calculation = EphemerisCalculation(jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
+
+    let sunData = calculation.calculate(SunCalculation.self)
+    let moonData = calculation.calculate(MoonCalculation.self)
 
     let lst = sunData.localApparentSiderealTime
     let sunRA = sunData.rightAscension
