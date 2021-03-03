@@ -35,8 +35,14 @@ final class SunMoonCalcTests: XCTestCase {
                 distance: Measurement(value: 0.002479872229507751, unit: .astronomicalUnits)
             ),
             age: 13.325196027873513,
-            illumination: 0.975347904390796,
-            visualAngles: .init(axisPosition: Measurement(value: 0.3373622533190958, unit: .radians), brightLimb: Measurement(value: 5.25226644381023, unit: .radians), paralactic: Measurement(value: 0.48702047010300514, unit: .radians), opticalLibration: (longPass: Measurement(value: 3.806772834960384, unit: .radians), bandPass: Measurement(value: 3.806772834960384, unit: .radians)))
+            illumination: 0.975347904390796
         ))
+    }
+    
+    func testMoonDiskOrientation() {
+        let date = dateFormatter.date(from: "2021-02-26 00:00:00 +0000")!
+        let result = getMoonDiskOrientationAngles(date: date, latitude: 48.137154, longitude: 11.576124)
+
+        XCTAssertEqual(result, .init(axisPosition: Measurement(value: 0.3373622533190958, unit: .radians), brightLimb: Measurement(value: 5.25226644381023, unit: .radians), paralactic: Measurement(value: 0.48702047010300514, unit: .radians), opticalLibration: (longPass: Measurement(value: 3.806772834960384, unit: .radians), bandPass: Measurement(value: 3.806772834960384, unit: .radians))))
     }
 }

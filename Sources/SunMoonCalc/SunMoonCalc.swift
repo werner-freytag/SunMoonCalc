@@ -87,16 +87,16 @@ public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twil
     
     /// OUTPUT VARIABLES
     
-    let sunData = calculateEphemerisData(locationProvider: getSunObjectLocation, niter: 3, jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
-    let moonData = calculateEphemerisData(locationProvider: getMoonObjectLocation, niter: 5, jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
+    let sunData = calculateEphemerisDataAccurate(SunCalculation.self, jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
+    let moonData = calculateEphemerisDataAccurate(MoonCalculation.self, jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
+    
+    let moonAge = MoonCalculation(jd: jd).age
 
-    let moonAge = getMoonAge(jd: jd)
     let moonIllumination = (1 - cos(acos(sin(sunData.declination) * sin(moonData.declination) + cos(sunData.declination) * cos(moonData.declination) * cos(moonData.rightAscension - sunData.rightAscension)))) * 0.5
-    let moonVisualAngles = getMoonVisualAngles(moonData: moonData, sunData: sunData, jd: jd, obsLat: obsLat)
 
     return (
         sun: Sun(ephemeris: Ephemeris(data: sunData)),
-        moon: Moon(ephemeris: Ephemeris(data: moonData), age: moonAge, illumination: moonIllumination, visualAngles: moonVisualAngles)
+        moon: Moon(ephemeris: Ephemeris(data: moonData), age: moonAge, illumination: moonIllumination)
     )
 }
 
@@ -112,9 +112,6 @@ public struct Moon: Equatable {
 
     /// Illumination (percentage)
     let illumination: Double
-
-    /// Angles for drawing
-    let visualAngles: VisualAngles
 }
 
 public struct Ephemeris: Equatable {
@@ -155,7 +152,7 @@ public extension Ephemeris {
 /// Reduce an angle in radians to the range (0 - 2 Pi)
 /// - Parameter r: Angle in radians
 /// - Returns: Reduced angle in radians
-private func normalizeRadians(_ r: Double) -> Double {
+func normalizeRadians(_ r: Double) -> Double {
     var r: Double = r
     if r < 0, r >= -2 * .pi {
         return r + 2 * .pi
@@ -209,10 +206,8 @@ struct EphemerisData {
 }
 
 
-typealias ObjectLocationProvider = (JulianDate) -> ObjectLocation
-
-func doCalc(locationProvider: ObjectLocationProvider, jd: JulianDate, obsLat: Double, obsLon: Double, twilight: Twilight) -> EphemerisData {
-    let data = locationProvider(jd)
+func calculateEphemerisData(_ calculation: ObjectCalculation.Type, jd: JulianDate, obsLat: Double, obsLon: Double, twilight: Twilight) -> EphemerisData {
+    let data = calculation.init(jd: jd).objectLocation
 
     let t = jd.timeFactor
     
@@ -362,12 +357,12 @@ func doCalc(locationProvider: ObjectLocationProvider, jd: JulianDate, obsLat: Do
     return EphemerisData(azimuth: azi, elevation: alt, rise: rise, set: set, transit: transit, transitElevation: transitAltitude, rightAscension: ra, declination: dec, distance: dist, localApparentSiderealTime: lst)
 }
 
-func obtainAccurateRiseSetTransit(data: EphemerisData, keyPath: KeyPath<EphemerisData, JulianDate?>, niter: Int, locationProvider: ObjectLocationProvider, obsLat: Double, obsLon: Double, twilight: Twilight) -> JulianDate? {
+func obtainAccurateRiseSetTransit(_ calculation: ObjectCalculation.Type, data: EphemerisData, keyPath: KeyPath<EphemerisData, JulianDate?>, obsLat: Double, obsLon: Double, twilight: Twilight) -> JulianDate? {
     guard var jd = data[keyPath: keyPath] else { return nil } // nil means  no rise/set from that location
     var step: Double = -1
     
-    for _ in 0 ..< niter {
-        let data = doCalc(locationProvider: locationProvider, jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
+    for _ in 0 ..< calculation.accuracyIterationsOfRiseSetTransit {
+        let data = calculateEphemerisData(calculation, jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
         guard let newValue = data[keyPath: keyPath] else { return nil }
         step = abs(Double(jd) - Double(newValue))
         jd = newValue
@@ -425,197 +420,132 @@ extension Double {
     }
 }
 
+class ObjectCalculation {
+    required init(jd: JulianDate) {
+        self.jd = jd
+    }
+
+    fileprivate let jd: JulianDate
+    fileprivate lazy var t: Double = jd.timeFactor
+
+    class var accuracyIterationsOfRiseSetTransit: Int { 3 }
+
+    var objectLocation: ObjectLocation {
+        preconditionFailure("Must be implemented in child classes")
+    }
+}
+
 // SUN PARAMETERS (Formulae from "Calendrical Calculations")
 
-
-/// Correction to the mean ecliptic longitude
-func getSunLongitudeCorrection(jd: JulianDate) -> Double {
-    let t = jd.timeFactor
-    let sanomaly = getSunAnomaly(jd: jd)
-    var c: Double = (1.9146 - 0.004817 * t - 0.000014 * t * t) * sin(sanomaly)
-    c = c + (0.019993 - 0.000101 * t) * sin(2 * sanomaly)
-    c = c + 0.00029 * sin(3 * sanomaly)
+class SunCalculation : ObjectCalculation {
     
-    return c
-}
+    /// Correction to the mean ecliptic longitude
+    private lazy var longitudeCorrection: Double = {
+        var c: Double = (1.9146 - 0.004817 * t - 0.000014 * t * t) * sin(anomaly)
+        c = c + (0.019993 - 0.000101 * t) * sin(2 * anomaly)
+        c = c + 0.00029 * sin(3 * anomaly)
+        
+        return c
+    }()
 
-func getSunLongitude(jd: JulianDate) -> Double {
-    let t = jd.timeFactor
-    let longitudeCorrection = getSunLongitudeCorrection(jd: jd)
-    
-    // Now, let calculate nutation and aberration
-    let M1 = toRadians(124.90 - 1934.134 * t + 0.002063 * t * t),
-        M2 = toRadians(201.11 + 72001.5377 * t + 0.00057 * t * t),
-        aberration = -0.00569 - 0.0047785 * sin(M1) - 0.0003667 * sin(M2)
+    lazy var longitude: Double = {
+        // Now, let calculate nutation and aberration
+        let M1 = toRadians(124.90 - 1934.134 * t + 0.002063 * t * t),
+            M2 = toRadians(201.11 + 72001.5377 * t + 0.00057 * t * t),
+            aberration = -0.00569 - 0.0047785 * sin(M1) - 0.0003667 * sin(M2)
 
-    return 280.46645 + 36000.76983 * t + 0.0003032 * t * t + longitudeCorrection + aberration
-}
+        return 280.46645 + 36000.76983 * t + 0.0003032 * t * t + longitudeCorrection + aberration
+    }()
 
-func getSunAnomaly(jd: JulianDate) -> Double {
-    let t = jd.timeFactor
-    return toRadians(357.5291 + 35999.0503 * t - 0.0001559 * t * t - 4.8e-07 * t * t * t)
-}
+    lazy var anomaly: Double = {
+        return toRadians(357.5291 + 35999.0503 * t - 0.0001559 * t * t - 4.8e-07 * t * t * t)
+    }()
 
-func getSunObjectLocation(jd: JulianDate) -> ObjectLocation {
-    let t = jd.timeFactor
-    
-    let sanomaly = getSunAnomaly(jd: jd)
-    let slongitude = getSunLongitude(jd: jd)
-    
-    let slatitude: Double = 0, // Sun's ecliptic latitude is always negligible
-        ecc: Double = 0.016708617 - 4.2037e-05 * t - 1.236e-07 * t * t, // Eccentricity
-        v: Double = sanomaly + toRadians(getSunLongitudeCorrection(jd: jd)), // True anomaly
-        sdistance: Double = 1.000001018 * (1 - ecc * ecc) / (1 + ecc * cos(v)) // In UA
-    return (slatitude, slongitude, sdistance, atan(696_000 / (AU * sdistance)))
-}
-
-
-
-
-func getMoonObjectLocation(jd: JulianDate) -> ObjectLocation {
-    let t = jd.timeFactor
-
-    // MOON PARAMETERS (Formulae from "Calendrical Calculations")
-    let phase: Double = normalizeRadians(toRadians(297.8502042 + 445_267.1115168 * t - 0.00163 * t * t + t * t * t / 538_841 - t * t * t * t / 65_194_000))
-
-    // Anomalistic phase
-    var anomaly: Double = (134.9634114 + 477_198.8676313 * t + 0.008997 * t * t + t * t * t / 69699 - t * t * t * t / 14_712_000)
-    anomaly = toRadians(anomaly)
-
-    // Degrees from ascending node
-    var node: Double = (93.2720993 + 483_202.0175273 * t - 0.0034029 * t * t - t * t * t / 3_526_000 + t * t * t * t / 863_310_000)
-    node = toRadians(node)
-
-    let E: Double = 1 - (0.002495 + 7.52e-06 * (t + 1)) * (t + 1)
-
-    let sanomaly = getSunAnomaly(jd: jd)
-    
-    // Now longitude, with the three main correcting terms of evection,
-    // variation, and equation of year, plus other terms (error<0.01 deg)
-    // P. Duffet's MOON program taken as reference
-    var longitude = (218.31664563 + 481_267.8811958 * t - 0.00146639 * t * t + t * t * t / 540_135.03 - t * t * t * t / 65_193_770.4)
-    longitude += 6.28875 * sin(anomaly) + 1.274018 * sin(2 * phase - anomaly) + 0.658309 * sin(2 * phase)
-    longitude += 0.213616 * sin(2 * anomaly) - E * 0.185596 * sin(sanomaly) - 0.114336 * sin(2 * node)
-    longitude += 0.058793 * sin(2 * phase - 2 * anomaly) + 0.057212 * E * sin(2 * phase - anomaly - sanomaly) + 0.05332 * sin(2 * phase + anomaly)
-    longitude += 0.045874 * E * sin(2 * phase - sanomaly) + 0.041024 * E * sin(anomaly - sanomaly) - 0.034718 * sin(phase) - E * 0.030465 * sin(sanomaly + anomaly)
-    longitude += 0.015326 * sin(2 * (phase - node)) - 0.012528 * sin(2 * node + anomaly) - 0.01098 * sin(2 * node - anomaly) + 0.010674 * sin(4 * phase - anomaly)
-    longitude += 0.010034 * sin(3 * anomaly) + 0.008548 * sin(4 * phase - 2 * anomaly)
-    longitude += -E * 0.00791 * sin(sanomaly - anomaly + 2 * phase) - E * 0.006783 * sin(2 * phase + sanomaly) + 0.005162 * sin(anomaly - phase) + E * 0.005 * sin(sanomaly + phase)
-    longitude += 0.003862 * sin(4 * phase) + E * 0.004049 * sin(anomaly - sanomaly + 2 * phase) + 0.003996 * sin(2 * (anomaly + phase)) + 0.003665 * sin(2 * phase - 3 * anomaly)
-    longitude += E * 2.695e-3 * sin(2 * anomaly - sanomaly) + 2.602e-3 * sin(anomaly - 2 * (node + phase))
-    longitude += E * 2.396e-3 * sin(2 * (phase - anomaly) - sanomaly) - 2.349e-3 * sin(anomaly + phase)
-    longitude += E * E * 2.249e-3 * sin(2 * (phase - sanomaly)) - E * 2.125e-3 * sin(2 * anomaly + sanomaly)
-    longitude += -E * E * 2.079e-3 * sin(2 * sanomaly) + E * E * 2.059e-3 * sin(2 * (phase - sanomaly) - anomaly)
-    longitude += -1.773e-3 * sin(anomaly + 2 * (phase - node)) - 1.595e-3 * sin(2 * (node + phase))
-    longitude += E * 1.22e-3 * sin(4 * phase - sanomaly - anomaly) - 1.11e-3 * sin(2 * (anomaly + node))
-
-    // Let's add nutation here also
-    let M1: Double = toRadians(124.90 - 1934.134 * t + 0.002063 * t * t),
-        M2: Double = toRadians(201.11 + 72001.5377 * t + 0.00057 * t * t),
-        d: Double = -0.0047785 * sin(M1) - 0.0003667 * sin(M2)
-    longitude += d
-
-    // Now Moon parallax
-    var parallax = 0.950724 + 0.051818 * cos(anomaly) + 0.009531 * cos(2 * phase - anomaly)
-    parallax += 0.007843 * cos(2 * phase) + 0.002824 * cos(2 * anomaly)
-    parallax += 0.000857 * cos(2 * phase + anomaly) + E * 0.000533 * cos(2 * phase - sanomaly)
-    parallax += E * 0.000401 * cos(2 * phase - anomaly - sanomaly) + E * 0.00032 * cos(anomaly - sanomaly) - 0.000271 * cos(phase)
-    parallax += -E * 0.000264 * cos(sanomaly + anomaly) - 0.000198 * cos(2 * node - anomaly)
-    parallax += 1.73e-4 * cos(3 * anomaly) + 1.67e-4 * cos(4 * phase - anomaly)
-
-    // So Moon distance in Earth radii is, more or less,
-    let distance: Double = 1 / sin(toRadians(parallax))
-
-    // Ecliptic latitude with nodal phase (error<0.01 deg)
-    var latitude = 5.128189 * sin(node) + 0.280606 * sin(node + anomaly) + 0.277693 * sin(anomaly - node)
-    latitude += 0.173238 * sin(2 * phase - node) + 0.055413 * sin(2 * phase + node - anomaly)
-    latitude += 0.046272 * sin(2 * phase - node - anomaly) + 0.032573 * sin(2 * phase + node)
-    latitude += 0.017198 * sin(2 * anomaly + node) + 0.009267 * sin(2 * phase + anomaly - node)
-    latitude += 0.008823 * sin(2 * anomaly - node) + E * 0.008247 * sin(2 * phase - sanomaly - node) + 0.004323 * sin(2 * (phase - anomaly) - node)
-    latitude += 0.0042 * sin(2 * phase + node + anomaly) + E * 0.003372 * sin(node - sanomaly - 2 * phase)
-    latitude += E * 2.472e-3 * sin(2 * phase + node - sanomaly - anomaly)
-    latitude += E * 2.222e-3 * sin(2 * phase + node - sanomaly)
-    latitude += E * 2.072e-3 * sin(2 * phase - node - sanomaly - anomaly)
-
-    return (latitude, longitude, distance * EARTH_RADIUS / AU, atan(1737.4 / (distance * EARTH_RADIUS)))
-}
-
-// Get accurate Moon age
-func getMoonAge(jd: JulianDate) -> Double {
-    let data = getMoonObjectLocation(jd: jd)
-    return normalizeRadians(toRadians(data.longitude - getSunLongitude(jd: jd))) * LUNAR_CYCLE_DAYS / (2 * .pi)
-}
-
-struct VisualAngles : Equatable {
-    static func == (lhs: VisualAngles, rhs: VisualAngles) -> Bool {
-        return lhs.axisPosition == rhs.axisPosition && lhs.brightLimb == rhs.brightLimb && lhs.paralactic == rhs.paralactic && lhs.opticalLibration.bandPass == rhs.opticalLibration.bandPass && lhs.opticalLibration.longPass == rhs.opticalLibration.longPass
+    override var objectLocation: ObjectLocation {
+        let slatitude: Double = 0, // Sun's ecliptic latitude is always negligible
+            ecc: Double = 0.016708617 - 4.2037e-05 * t - 1.236e-07 * t * t, // Eccentricity
+            v: Double = anomaly + toRadians(longitudeCorrection), // True anomaly
+            sdistance: Double = 1.000001018 * (1 - ecc * ecc) / (1 + ecc * cos(v)) // In UA
+        return (slatitude, longitude, sdistance, atan(696_000 / (AU * sdistance)))
     }
-    
-    /// Position angle of axis (radians)
-    let axisPosition: Measurement<UnitAngle>
-    
-    /// Bright limb angle (radians)
-    let brightLimb: Measurement<UnitAngle>
-    
-    /// Paralactic angle (radians)
-    let paralactic: Measurement<UnitAngle>
-    
-    let opticalLibration: (longPass: Measurement<UnitAngle>, bandPass: Measurement<UnitAngle>)
 }
 
-/// Method to calculate values of Moon Disk
-/// - Returns: [optical librations (lp), lunar coordinates of the centre of the disk (bp), position angle of axis (p), bright limb angle (bl), paralactic angle (par)]
-func getMoonVisualAngles(moonData: EphemerisData, sunData: EphemerisData, jd: JulianDate, obsLat: Double) -> VisualAngles {
-    let lst = sunData.localApparentSiderealTime
-    let sunRA = sunData.rightAscension
-    let sunDec = sunData.declination
-    let moonLon = toRadians(moonData.azimuth)
-    let moonLat = toRadians(moonData.elevation)
-    let moonRA = moonData.rightAscension
-    let moonDec = moonData.declination
-    
-    let t = jd.timeFactor
-    
-    // Moon's argument of latitude
-    let F = toRadians(93.2720993 + 483_202.0175273 * t - 0.0034029 * t * t - t * t * t / 3_526_000 + t * t * t * t / 863_310_000)
-    
-    // Moon's inclination
-    let I = toRadians(1.54242)
-    
-    // Moon's mean ascending node longitude
-    let omega = toRadians(125.0445550 - 1934.1361849 * t + 0.0020762 * t * t + t * t * t / 467_410 - t * t * t * t / 18_999_000)
-    
-    // Obliquity of ecliptic (approx, better formulae up)
-    let eps = toRadians(23.43929)
+class MoonCalculation : ObjectCalculation {
+    override class var accuracyIterationsOfRiseSetTransit: Int { 5 }
 
-    // Obtain optical librations lp and bp
-    let W = moonLon - omega,
-        sinA = sin(W) * cos(moonLat) * cos(I) - sin(moonLat) * sin(I),
-        cosA = cos(W) * cos(moonLat),
-        A = atan2(sinA, cosA),
-        lp = normalizeRadians(A - F),
-        sinbp = -sin(W) * cos(moonLat) * sin(I) - sin(moonLat) * cos(I),
-        bp = asin(sinbp)
+    private lazy var sun: SunCalculation = SunCalculation(jd: jd)
+    
+    // Anomalistic phase
+    lazy var anomaly: Double = {
+        return toRadians(134.9634114 + 477_198.8676313 * t + 0.008997 * t * t + t * t * t / 69699 - t * t * t * t / 14_712_000)
+    }()
+    
+    override var objectLocation: ObjectLocation {
+        // MOON PARAMETERS (Formulae from "Calendrical Calculations")
+        let phase: Double = normalizeRadians(toRadians(297.8502042 + 445_267.1115168 * t - 0.00163 * t * t + t * t * t / 538_841 - t * t * t * t / 65_194_000))
 
-    // Obtain position angle of axis p
-    var x = sin(I) * sin(omega),
-        y = sin(I) * cos(omega) * cos(eps) - cos(I) * sin(eps)
-    let w = atan2(x, y),
-        sinp = sqrt(x * x + y * y) * cos(moonRA - w) / cos(bp),
-        p = asin(sinp)
+        // Degrees from ascending node
+        var node: Double = (93.2720993 + 483_202.0175273 * t - 0.0034029 * t * t - t * t * t / 3_526_000 + t * t * t * t / 863_310_000)
+        node = toRadians(node)
 
-    // Compute bright limb angle bl
-    let bl = (Double.pi + atan2(cos(sunDec) * sin(moonRA - sunRA), cos(sunDec) * sin(moonDec) * cos(moonRA - sunRA) - sin(sunDec) * cos(moonDec)))
+        let E: Double = 1 - (0.002495 + 7.52e-06 * (t + 1)) * (t + 1)
 
-    // Paralactic angle par
-    y = sin(lst - moonRA)
-    x = tan(obsLat) * cos(moonDec) - sin(moonDec) * cos(lst - moonRA)
-    let par: Double = x != 0 ? atan2(y, x) : (y / abs(y)) * Double.pi / 2
+        let sanomaly = sun.anomaly
+        
+        // Now longitude, with the three main correcting terms of evection,
+        // variation, and equation of year, plus other terms (error<0.01 deg)
+        // P. Duffet's MOON program taken as reference
+        var longitude = (218.31664563 + 481_267.8811958 * t - 0.00146639 * t * t + t * t * t / 540_135.03 - t * t * t * t / 65_193_770.4)
+        longitude += 6.28875 * sin(anomaly) + 1.274018 * sin(2 * phase - anomaly) + 0.658309 * sin(2 * phase)
+        longitude += 0.213616 * sin(2 * anomaly) - E * 0.185596 * sin(sanomaly) - 0.114336 * sin(2 * node)
+        longitude += 0.058793 * sin(2 * phase - 2 * anomaly) + 0.057212 * E * sin(2 * phase - anomaly - sanomaly) + 0.05332 * sin(2 * phase + anomaly)
+        longitude += 0.045874 * E * sin(2 * phase - sanomaly) + 0.041024 * E * sin(anomaly - sanomaly) - 0.034718 * sin(phase) - E * 0.030465 * sin(sanomaly + anomaly)
+        longitude += 0.015326 * sin(2 * (phase - node)) - 0.012528 * sin(2 * node + anomaly) - 0.01098 * sin(2 * node - anomaly) + 0.010674 * sin(4 * phase - anomaly)
+        longitude += 0.010034 * sin(3 * anomaly) + 0.008548 * sin(4 * phase - 2 * anomaly)
+        longitude += -E * 0.00791 * sin(sanomaly - anomaly + 2 * phase) - E * 0.006783 * sin(2 * phase + sanomaly) + 0.005162 * sin(anomaly - phase) + E * 0.005 * sin(sanomaly + phase)
+        longitude += 0.003862 * sin(4 * phase) + E * 0.004049 * sin(anomaly - sanomaly + 2 * phase) + 0.003996 * sin(2 * (anomaly + phase)) + 0.003665 * sin(2 * phase - 3 * anomaly)
+        longitude += E * 2.695e-3 * sin(2 * anomaly - sanomaly) + 2.602e-3 * sin(anomaly - 2 * (node + phase))
+        longitude += E * 2.396e-3 * sin(2 * (phase - anomaly) - sanomaly) - 2.349e-3 * sin(anomaly + phase)
+        longitude += E * E * 2.249e-3 * sin(2 * (phase - sanomaly)) - E * 2.125e-3 * sin(2 * anomaly + sanomaly)
+        longitude += -E * E * 2.079e-3 * sin(2 * sanomaly) + E * E * 2.059e-3 * sin(2 * (phase - sanomaly) - anomaly)
+        longitude += -1.773e-3 * sin(anomaly + 2 * (phase - node)) - 1.595e-3 * sin(2 * (node + phase))
+        longitude += E * 1.22e-3 * sin(4 * phase - sanomaly - anomaly) - 1.11e-3 * sin(2 * (anomaly + node))
 
-    return VisualAngles(
-        axisPosition: .init(value: p, unit: .radians), brightLimb: .init(value: bl, unit: .radians), paralactic: .init(value: par, unit: .radians),
-        opticalLibration: (.init(value: lp, unit: .radians), .init(value: lp, unit: .radians))
-    )
+        // Let's add nutation here also
+        let M1: Double = toRadians(124.90 - 1934.134 * t + 0.002063 * t * t),
+            M2: Double = toRadians(201.11 + 72001.5377 * t + 0.00057 * t * t),
+            d: Double = -0.0047785 * sin(M1) - 0.0003667 * sin(M2)
+        longitude += d
+
+        // Now Moon parallax
+        var parallax = 0.950724 + 0.051818 * cos(anomaly) + 0.009531 * cos(2 * phase - anomaly)
+        parallax += 0.007843 * cos(2 * phase) + 0.002824 * cos(2 * anomaly)
+        parallax += 0.000857 * cos(2 * phase + anomaly) + E * 0.000533 * cos(2 * phase - sanomaly)
+        parallax += E * 0.000401 * cos(2 * phase - anomaly - sanomaly) + E * 0.00032 * cos(anomaly - sanomaly) - 0.000271 * cos(phase)
+        parallax += -E * 0.000264 * cos(sanomaly + anomaly) - 0.000198 * cos(2 * node - anomaly)
+        parallax += 1.73e-4 * cos(3 * anomaly) + 1.67e-4 * cos(4 * phase - anomaly)
+
+        // So Moon distance in Earth radii is, more or less,
+        let distance: Double = 1 / sin(toRadians(parallax))
+
+        // Ecliptic latitude with nodal phase (error<0.01 deg)
+        var latitude = 5.128189 * sin(node) + 0.280606 * sin(node + anomaly) + 0.277693 * sin(anomaly - node)
+        latitude += 0.173238 * sin(2 * phase - node) + 0.055413 * sin(2 * phase + node - anomaly)
+        latitude += 0.046272 * sin(2 * phase - node - anomaly) + 0.032573 * sin(2 * phase + node)
+        latitude += 0.017198 * sin(2 * anomaly + node) + 0.009267 * sin(2 * phase + anomaly - node)
+        latitude += 0.008823 * sin(2 * anomaly - node) + E * 0.008247 * sin(2 * phase - sanomaly - node) + 0.004323 * sin(2 * (phase - anomaly) - node)
+        latitude += 0.0042 * sin(2 * phase + node + anomaly) + E * 0.003372 * sin(node - sanomaly - 2 * phase)
+        latitude += E * 2.472e-3 * sin(2 * phase + node - sanomaly - anomaly)
+        latitude += E * 2.222e-3 * sin(2 * phase + node - sanomaly)
+        latitude += E * 2.072e-3 * sin(2 * phase - node - sanomaly - anomaly)
+
+        return (latitude, longitude, distance * EARTH_RADIUS / AU, atan(1737.4 / (distance * EARTH_RADIUS)))
+    }
+
+    // Get accurate Moon age
+    var age: Double {
+        normalizeRadians(toRadians(objectLocation.longitude - sun.longitude)) * LUNAR_CYCLE_DAYS / (2 * .pi)
+    }
 }
 
 extension Double {
@@ -624,17 +554,17 @@ extension Double {
     }
 }
 
-func calculateEphemerisData(locationProvider: ObjectLocationProvider, niter: Int, jd: JulianDate, obsLat: Double, obsLon: Double, twilight: Twilight) -> EphemerisData {
+func calculateEphemerisDataAccurate(_ calculation: ObjectCalculation.Type, jd: JulianDate, obsLat: Double, obsLon: Double, twilight: Twilight) -> EphemerisData {
 
-    var data = doCalc(locationProvider: locationProvider, jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
+    var data = calculateEphemerisData(calculation, jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
 
     for keyPath in [\EphemerisData.rise, \EphemerisData.set, \EphemerisData.transit] {
-        data[keyPath: keyPath] = obtainAccurateRiseSetTransit(data: data, keyPath: keyPath, niter: niter, locationProvider: locationProvider, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
+        data[keyPath: keyPath] = obtainAccurateRiseSetTransit(calculation, data: data, keyPath: keyPath, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
     }
     
-    // Update Sun's maximum elevation
+    // Update maximum elevation
     if let sunTransit = data.transit {
-        let calculationData = doCalc(locationProvider: locationProvider, jd: sunTransit, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
+        let calculationData = calculateEphemerisData(calculation, jd: sunTransit, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
         data.transitElevation = calculationData.transitElevation
     } else {
         data.transitElevation = 0
