@@ -1,10 +1,3 @@
-//
-//  File.swift
-//
-//
-//  Created by Werner on 03.03.21.
-//
-
 import Foundation
 
 public struct DiskOrientationAngles: Equatable {
