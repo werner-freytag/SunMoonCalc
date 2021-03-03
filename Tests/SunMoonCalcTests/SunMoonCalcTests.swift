@@ -10,9 +10,9 @@ final class SunMoonCalcTests: XCTestCase {
 
     func testSun() {
         let date = dateFormatter.date(from: "2021-02-26 00:00:00 +0000")!
-        let location = Location(latitude: .init(value: 48.137154, unit: .degrees), longitude: .init(value: 11.576124, unit: .degrees))
+        let location = Location(48.137154, 11.576124)
 
-        let sun = Sun(date: date, location: location)
+        let sun = Sun(location: location, date: date)
 
         XCTAssertEqual(sun.ephemeris, Ephemeris(
             azimuth: Measurement(value: 0.22503024947665207, unit: .radians),
@@ -27,9 +27,9 @@ final class SunMoonCalcTests: XCTestCase {
 
     func testMoon() {
         let date = dateFormatter.date(from: "2021-02-26 00:00:00 +0000")!
-        let location = Location(latitude: .init(value: 48.137154, unit: .degrees), longitude: .init(value: 11.576124, unit: .degrees))
+        let location = Location(48.137154, 11.576124)
 
-        let moon = Moon(date: date, location: location)
+        let moon = Moon(location: location, date: date)
 
         XCTAssertEqual(moon.ephemeris, Ephemeris(
             azimuth: Measurement(value: 3.8687937729816104, unit: .radians),
@@ -47,8 +47,9 @@ final class SunMoonCalcTests: XCTestCase {
 
     func testMoonDiskOrientation() {
         let date = dateFormatter.date(from: "2021-02-26 00:00:00 +0000")!
-        let location = Location(latitude: .init(value: 48.137154, unit: .degrees), longitude: .init(value: 11.576124, unit: .degrees))
-        let result = Moon(date: date, location: location).diskOrientationAngles
+        let location = Location(48.137154, 11.576124)
+
+        let result = Moon(location: location, date: date).diskOrientationAngles
 
         XCTAssertEqual(result, .init(axisPosition: Measurement(value: 0.3373622533190958, unit: .radians), brightLimb: Measurement(value: 5.25226644381023, unit: .radians), paralactic: Measurement(value: 0.48702047010300514, unit: .radians), opticalLibration: (longPass: Measurement(value: 3.806772834960384, unit: .radians), bandPass: Measurement(value: 3.806772834960384, unit: .radians))))
     }

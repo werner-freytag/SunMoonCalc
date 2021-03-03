@@ -70,7 +70,7 @@ extension MoonCalculation {
         x = tan(obsLat) * cos(moonDec) - sin(moonDec) * cos(lst - moonRA)
         let par: Double = x != 0 ? atan2(y, x) : (y / abs(y)) * Double.pi / 2
 
-        return DiskOrientationAngles(
+        return .init(
             axisPosition: .init(value: p, unit: .radians), brightLimb: .init(value: bl, unit: .radians), paralactic: .init(value: par, unit: .radians),
             opticalLibration: (.init(value: lp, unit: .radians), .init(value: lp, unit: .radians))
         )
@@ -79,4 +79,25 @@ extension MoonCalculation {
 
 public extension Moon {
     var diskOrientationAngles: DiskOrientationAngles { calculation.diskOrientationAngles }
+}
+
+public struct ViewingAngles {
+    /// Phase angle which is related to the illumination
+    var phase: Measurement<UnitAngle>
+
+    /// Angle of moon rotation
+    var moon: Measurement<UnitAngle>
+
+    /// Angle of shadow rotation
+    var shadow: Measurement<UnitAngle>
+}
+
+extension Moon {
+    var diskOrientationViewingAngles: ViewingAngles {
+        .init(
+            phase: .init(value: acos(-cos(age / LUNAR_CYCLE_DAYS * 2 * .pi)), unit: .radians).converted(to: .degrees),
+            moon: (-1 * (diskOrientationAngles.brightLimb - diskOrientationAngles.paralactic)).converted(to: .degrees),
+            shadow: (-1 * (diskOrientationAngles.axisPosition - diskOrientationAngles.paralactic)).converted(to: .degrees)
+        )
+    }
 }

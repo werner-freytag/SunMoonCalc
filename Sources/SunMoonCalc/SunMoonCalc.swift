@@ -54,6 +54,15 @@ public enum Twilight {
 public struct Location {
     let latitude: Measurement<UnitAngle>
     let longitude: Measurement<UnitAngle>
+
+    init(latitude: Measurement<UnitAngle>, longitude: Measurement<UnitAngle>) {
+        self.latitude = latitude
+        self.longitude = longitude
+    }
+
+    init(_ latitude: Double, _ longitude: Double) {
+        self.init(latitude: .init(value: latitude, unit: .degrees), longitude: .init(value: longitude, unit: .degrees))
+    }
 }
 
 public class Sun {
@@ -62,7 +71,7 @@ public class Sun {
     ///   - date: The date of observations
     ///   - location: Location of observation
     ///   - twilight: twilight configuration
-    init(date: Date, location: Location, twilight: Twilight = .horizon34arcmin) {
+    init(location: Location, date: Date = .init(), twilight: Twilight = .horizon34arcmin) {
         calculation = .init(date: date, location: location, twilight: twilight)
     }
 
@@ -77,7 +86,7 @@ public class Moon {
     ///   - date: The date of observations
     ///   - location: Location of observation
     ///   - twilight: twilight configuration
-    init(date: Date, location: Location, twilight: Twilight = .horizon34arcmin) {
+    init(location: Location, date: Date = .init(), twilight: Twilight = .horizon34arcmin) {
         calculation = .init(date: date, location: location, twilight: twilight)
     }
 
