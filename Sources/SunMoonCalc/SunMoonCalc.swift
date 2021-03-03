@@ -2,16 +2,6 @@ import Foundation
 
 /// Original Java code: http://conga.oan.es/~alonso/doku.php?id=blog:sun_moon_position
 
-/// Convert to degrees from radians
-func toDegrees<T: FloatingPoint>(_ rad: T) -> T {
-    rad * 180 / T.pi
-}
-
-/// Convert to radians from degrees
-func toRadians<T: FloatingPoint>(_ deg: T) -> T {
-    deg * T.pi / 180
-}
-
 /// Astronomical Unit in km. As defined by JPL
 let AU: Double = 149_597_870.691
 
@@ -61,46 +51,37 @@ public enum Twilight {
     case horizon34arcmin
 }
 
-typealias ObjectLocation = (latitude: Double, longitude: Double, distance: Double, angularRadius: Double)
-
 public struct Location {
     let latitude: Measurement<UnitAngle>
     let longitude: Measurement<UnitAngle>
 }
 
-/// Create instance of Sun/Moon Calculator
-/// - Parameters:
-///   - date: The date/time of observations (local timezone)
-///   - longitude: Longitude of observation (degrees)
-///   - latitude: Latitude of observation (degrees)
-///   - twilight: twilight configuration
-/// - Throws: invalidJulianDay if the date does not exists
-/// - Returns: Sun and moon information
-public func calcSunAndMoon(date: Date, location: Location, twilight: Twilight = .horizon34arcmin) throws -> (sun: Sun, moon: Moon) {
-    /// INPUT VARIABLES
-
-    return (
-        sun: Sun(date: date, location: location, twilight: twilight),
-        moon: Moon(date: date, location: location, twilight: twilight)
-    )
-}
-
 public class Sun {
+    /// Create instance of Sun
+    /// - Parameters:
+    ///   - date: The date of observations
+    ///   - location: Location of observation
+    ///   - twilight: twilight configuration
     init(date: Date, location: Location, twilight: Twilight = .horizon34arcmin) {
         calculation = .init(date: date, location: location, twilight: twilight)
     }
 
-    private let calculation: SunCalculation
+    let calculation: SunCalculation
 
     lazy var ephemeris: Ephemeris = { .init(data: calculation.ephemerisData) }()
 }
 
 public class Moon {
+    /// Create instance of Moon
+    /// - Parameters:
+    ///   - date: The date of observations
+    ///   - location: Location of observation
+    ///   - twilight: twilight configuration
     init(date: Date, location: Location, twilight: Twilight = .horizon34arcmin) {
         calculation = .init(date: date, location: location, twilight: twilight)
     }
 
-    private let calculation: MoonCalculation
+    let calculation: MoonCalculation
 
     lazy var ephemeris: Ephemeris = { .init(data: calculation.ephemerisData) }()
 
@@ -132,6 +113,16 @@ public struct Ephemeris {
 
     /// Sun distance (AUs)
     let distance: Measurement<UnitLength>
+}
+
+/// Convert to degrees from radians
+func toDegrees<T: FloatingPoint>(_ rad: T) -> T {
+    rad * 180 / T.pi
+}
+
+/// Convert to radians from degrees
+func toRadians<T: FloatingPoint>(_ deg: T) -> T {
+    deg * T.pi / 180
 }
 
 /// Reduce an angle in radians to the range (0 - 2 Pi)
@@ -229,6 +220,8 @@ extension Double {
         self = jd.julianDays
     }
 }
+
+typealias ObjectLocation = (latitude: Double, longitude: Double, distance: Double, angularRadius: Double)
 
 class ObjectCalculation {
     /// INPUT VARIABLES
