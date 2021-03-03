@@ -31,8 +31,10 @@ let SECONDS_PER_DAY: Double = 86400
 /// The Julian Day which represents noon on 2000-01-01
 let J2000: Double = 2_451_545
 
+let J1970: Double = 2_440_588
+
 /// Lunar cycle length in days
-let LUNAR_CYCLE_DAYS: Double = 29.530588853
+let LUNAR_CYCLE_DAYS = 29.530588853
 
 /// The set of twilights to calculate (types of rise/set events)
 public enum Twilight {
@@ -59,18 +61,13 @@ public enum Twilight {
     case Horizon34arcmin
 }
 
-/// Error types which can be thrown
-public enum Errors: Error {
-    /// Julian day does not exists
-    case invalidJulianDay(_ jd: Double)
+typealias ObjectLocation = (latitude: Double, longitude: Double, distance: Double, angularRadius: Double)
 
-    /// Invalid location
-    case invalidLocation(longitude: Double, latitude: Double)
+
+public struct Location {
+    let latitude: Measurement<UnitAngle>
+    let longitude: Measurement<UnitAngle>
 }
-
-
-typealias CalculationData = (latitude: Double, longitude: Double, distance: Double, angularRadius: Double)
-
 
 /// Create instance of Sun/Moon Calculator
 /// - Parameters:
@@ -81,24 +78,21 @@ typealias CalculationData = (latitude: Double, longitude: Double, distance: Doub
 /// - Throws: invalidJulianDay if the date does not exists
 /// - Returns: Sun and moon information
 public func calcSunAndMoon(date: Date, latitude: Double, longitude: Double, twilight: Twilight = .Horizon34arcmin) throws -> (sun: Sun, moon: Moon) {
-    if longitude.isNaN || latitude.isNaN || abs(longitude) > 180 || abs(latitude) > 90 {
-        throw Errors.invalidLocation(longitude: longitude, latitude: latitude)
-    }
 
     /// INPUT VARIABLES
-    
-    let jd = toJulian(date)
-    let obsLon : Double = toRadians(longitude)
-    let obsLat: Double = toRadians(latitude)
+
+    let jd = JulianDate(date: date)
+    let obsLon = toRadians(longitude)
+    let obsLat = toRadians(latitude)
     
     /// OUTPUT VARIABLES
     
-    let sunData = calculateEphemerisData(dataProvider: getSunCalculationData, niter: 3, jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
-    let moonData = calculateEphemerisData(dataProvider: getMoonCalculationData, niter: 5, jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
+    let sunData = calculateEphemerisData(locationProvider: getSunObjectLocation, niter: 3, jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
+    let moonData = calculateEphemerisData(locationProvider: getMoonObjectLocation, niter: 5, jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
 
-    let moonVisualAngles = getMoonVisualAngles(moonData: moonData, sunData: sunData, jd: jd, obsLat: obsLat)
-    let moonIllumination = (1 - cos(acos(sin(sunData.declination) * sin(moonData.declination) + cos(sunData.declination) * cos(moonData.declination) * cos(moonData.rightAscension - sunData.rightAscension)))) * 0.5
     let moonAge = getMoonAge(jd: jd)
+    let moonIllumination = (1 - cos(acos(sin(sunData.declination) * sin(moonData.declination) + cos(sunData.declination) * cos(moonData.declination) * cos(moonData.rightAscension - sunData.rightAscension)))) * 0.5
+    let moonVisualAngles = getMoonVisualAngles(moonData: moonData, sunData: sunData, jd: jd, obsLat: obsLat)
 
     return (
         sun: Sun(ephemeris: Ephemeris(data: sunData)),
@@ -146,46 +140,15 @@ public struct Ephemeris: Equatable {
     let distance: Measurement<UnitLength>
 }
 
-///  Transforms a Julian day (rise/set/transit fields) to a Date
-/// - Parameter jd: Julian day
-/// - Returns: Date for specified Julian day
-public extension Date {
-    init?(julianDay jd: Double) {
-        do {
-            try validateJulianDay(jd)
-        } catch {
-            return nil
-        }
-
-        // The conversion formulas are from Meeus, Chapter 7.
-        let Z: Double = floor(jd + 0.5),
-            F: Double = jd + 0.5 - Z
-        var A: Double = Z
-        if Z >= 2_299_161 {
-            let a = Int((Z - 1_867_216.25) / 36524.25)
-            A += 1 + Double(a) - Double(a) / 4
-        }
-        let B: Double = A + 1524,
-            C: Int = Int((B - 122.1) / 365.25),
-            D: Int = Int(Double(C) * 365.25),
-            E: Int = Int((B - Double(D)) / 30.6001),
-            exactDay: Double = F + B - Double(D) - Double(Int(30.6001 * Double(E))),
-            day: Int = Int(exactDay),
-            month: Int = (E < 14) ? E - 1 : E - 13
-        var year: Int = C - 4715
-        if month > 2 {
-            year -= 1
-        }
-        let h: Double = ((exactDay - Double(day)) * SECONDS_PER_DAY) / 3600,
-            hour: Int = Int(h),
-            m: Double = (h - Double(hour)) * 60,
-            minute: Int = Int(m),
-            second: Int = Int((m - Double(minute)) * 60)
-
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(abbreviation: "UTC")!
-        let date = calendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour, minute: minute, second: second))!
-        self.init(timeIntervalSince1970: date.timeIntervalSince1970)
+public extension Ephemeris {
+    static func == (lhs: Ephemeris, rhs: Ephemeris) -> Bool {
+        return lhs.azimuth == rhs.azimuth
+            && lhs.elevation == rhs.elevation
+            && floor(lhs.rise?.timeIntervalSince1970 ?? 0) == floor(rhs.rise?.timeIntervalSince1970 ?? 0)
+            && floor(lhs.set?.timeIntervalSince1970 ?? 0) == floor(rhs.set?.timeIntervalSince1970 ?? 0)
+            && floor(lhs.transit?.timeIntervalSince1970 ?? 0) == floor(rhs.transit?.timeIntervalSince1970 ?? 0)
+            && lhs.transitElevation == rhs.transitElevation
+            && lhs.distance == rhs.distance
     }
 }
 
@@ -194,28 +157,22 @@ public extension Date {
 /// - Returns: Reduced angle in radians
 private func normalizeRadians(_ r: Double) -> Double {
     var r: Double = r
-    if r < 0, r >= -2 * Double.pi {
-        return r + 2 * Double.pi
+    if r < 0, r >= -2 * .pi {
+        return r + 2 * .pi
     }
-    if r >= 2 * Double.pi, r < 4 * Double.pi {
-        return r - 2 * Double.pi
+    if r >= 2 * Double.pi, r < 4 * .pi {
+        return r - 2 * .pi
     }
-    if r >= 0, r < 2 * Double.pi {
+    if r >= 0, r < 2 * .pi {
         return r
     }
 
-    r -= 2 * Double.pi * floor(r * 1 / (2 * Double.pi))
+    r -= 2 * .pi * floor(r * 1 / (2 * .pi))
     if r < 0 {
-        r += 2 * Double.pi
+        r += 2 * .pi
     }
 
     return r
-}
-
-func validateJulianDay(_ jd: Double) throws {
-    if jd < 2_299_160, jd >= 2_299_150 {
-        throw Errors.invalidJulianDay(jd)
-    }
 }
 
 struct EphemerisData {
@@ -227,13 +184,13 @@ struct EphemerisData {
     let elevation: Double
 
     /// rise (Julian days as per UTC)
-    var rise: Double?
+    var rise: JulianDate?
 
     /// set (Julian days as per UTC)
-    var set: Double?
+    var set: JulianDate?
 
     /// transit (Julian days as per UTC)
-    var transit: Double?
+    var transit: JulianDate?
 
     /// transit elevation (radians)
     var transitElevation: Double
@@ -252,12 +209,12 @@ struct EphemerisData {
 }
 
 
-typealias CalculationDataProvider = (Double) -> CalculationData
+typealias ObjectLocationProvider = (JulianDate) -> ObjectLocation
 
-func doCalc(dataProvider: CalculationDataProvider, jd: Double, obsLat: Double, obsLon: Double, twilight: Twilight) -> EphemerisData {
-    let data = dataProvider(jd)
+func doCalc(locationProvider: ObjectLocationProvider, jd: JulianDate, obsLat: Double, obsLon: Double, twilight: Twilight) -> EphemerisData {
+    let data = locationProvider(jd)
 
-    let t = timeFactor(jd)
+    let t = jd.timeFactor
     
     // Ecliptic to equatorial coordinates
     let t2: Double = t / 100
@@ -284,9 +241,9 @@ func doCalc(dataProvider: CalculationDataProvider, jd: Double, obsLat: Double, o
     y = tmp
 
     // Obtain local apparent sidereal time
-    let jd0: Double = floor(jd - 0.5) + 0.5,
-        T0: Double = (jd0 - J2000) / JULIAN_DAYS_PER_CENTURY,
-        secs: Double = (jd - jd0) * SECONDS_PER_DAY
+    let jd0 = floor(Double(jd) - 0.5) + 0.5,
+        T0 = (jd0 - J2000) / JULIAN_DAYS_PER_CENTURY,
+        secs = (Double(jd) - jd0) * SECONDS_PER_DAY
     var gmst: Double = (((((-6.2e-6 * T0) + 9.3104e-2) * T0) + 8_640_184.812866) * T0) + 24110.54841
     let msday: Double = 1 + (((((-1.86e-5 * T0) + 0.186208) * T0) + 8_640_184.812866) / (SECONDS_PER_DAY * JULIAN_DAYS_PER_CENTURY))
     gmst = (gmst + msday * secs) * toRadians(15 / 3600)
@@ -338,7 +295,7 @@ func doCalc(dataProvider: CalculationDataProvider, jd: Double, obsLat: Double, o
 
     switch twilight {
     case .Horizon34arcmin:
-        // Rise, set, transit times, taking into account Sun/Moon angular radius (pos[3]).
+        // Rise, set, transit times, taking into account Sun/Moon angular radius
         // The 34' factor is the standard refraction at horizon.
         // Removing angular radius will do calculations for the center of the disk instead
         // of the upper limb.
@@ -356,63 +313,63 @@ func doCalc(dataProvider: CalculationDataProvider, jd: Double, obsLat: Double, o
     let celestialHoursToEarthTime: Double = 180 / (15 * Double.pi) / 24 / SIDEREAL_DAY_LENGTH
 
     // Make calculations for the meridian
-    let transit_time1: Double = celestialHoursToEarthTime * normalizeRadians(ra - lst),
-        transit_time2: Double = celestialHoursToEarthTime * (normalizeRadians(ra - lst) - 2 * Double.pi)
-    var transit_alt: Double = asin(sin(dec) * sin(obsLat) + cos(dec) * cos(obsLat))
-    if transit_alt > toRadians(-3) {
-        let r: Double = toRadians(0.016667) * abs(tan(Double.pi / 2 - (toDegrees(transit_alt) + 7.31 / toRadians(toDegrees(transit_alt) + 4.4)))),
+    let transitTime1 = celestialHoursToEarthTime * normalizeRadians(ra - lst),
+        transitTime2 = celestialHoursToEarthTime * (normalizeRadians(ra - lst) - 2 * Double.pi)
+    var transitAltitude = asin(sin(dec) * sin(obsLat) + cos(dec) * cos(obsLat))
+    if transitAltitude > toRadians(-3) {
+        let r: Double = toRadians(0.016667) * abs(tan(Double.pi / 2 - (toDegrees(transitAltitude) + 7.31 / toRadians(toDegrees(transitAltitude) + 4.4)))),
             refr: Double = r * (0.28 * 1010 / (10 + 273)) // Assuming pressure of 1010 mb and T = 10 C
-        transit_alt = min(transit_alt + refr, Double.pi / 2) // This is not accurate, but acceptable
+        transitAltitude = min(transitAltitude + refr, Double.pi / 2) // This is not accurate, but acceptable
     }
 
     // Obtain the current event in time
-    var transit_time: Double = transit_time1
-    let jdToday: Double = floor(jd - 0.5) + 0.5,
-        transitToday2: Double = floor(jd + transit_time2 - 0.5) + 0.5
+    var transitTime = transitTime1
+    let jdToday = floor(Double(jd) - 0.5) + 0.5,
+        transitToday2 = floor(Double(jd) + transitTime2 - 0.5) + 0.5
     // Obtain the transit time. Preference should be given to the closest event
     // in time to the current calculation time
-    if jdToday == transitToday2, abs(transit_time2) < abs(transit_time1) {
-        transit_time = transit_time2
+    if jdToday == transitToday2, abs(transitTime2) < abs(transitTime1) {
+        transitTime = transitTime2
     }
-    let transit: Double = jd + transit_time
+    let transit = JulianDate(Double(jd) + transitTime)
 
     // Make calculations for rise and set
-    var rise: Double = -1, set: Double = -1
+    var rise: JulianDate?, set: JulianDate?
     if abs(tmp) <= 1 {
-        let ang_hor: Double = abs(acos(tmp)),
-            rise_time1: Double = celestialHoursToEarthTime * normalizeRadians(ra - ang_hor - lst),
-            set_time1: Double = celestialHoursToEarthTime * normalizeRadians(ra + ang_hor - lst),
-            rise_time2: Double = celestialHoursToEarthTime * (normalizeRadians(ra - ang_hor - lst) - 2 * Double.pi),
-            set_time2: Double = celestialHoursToEarthTime * (normalizeRadians(ra + ang_hor - lst) - 2 * Double.pi)
+        let ang_hor = abs(acos(tmp)),
+            riseTime1 = celestialHoursToEarthTime * normalizeRadians(ra - ang_hor - lst),
+            setTime1 = celestialHoursToEarthTime * normalizeRadians(ra + ang_hor - lst),
+            riseTime2 = celestialHoursToEarthTime * (normalizeRadians(ra - ang_hor - lst) - 2 * Double.pi),
+            setTime2 = celestialHoursToEarthTime * (normalizeRadians(ra + ang_hor - lst) - 2 * Double.pi)
 
         // Obtain the current events in time. Preference should be given to the closest event
         // in time to the current calculation time (so that iteration in other method will converge)
-        var rise_time: Double = rise_time1
-        let riseToday2: Double = floor(jd + rise_time2 - 0.5) + 0.5
-        if jdToday == riseToday2, abs(rise_time2) < abs(rise_time1) {
-            rise_time = rise_time2
+        var riseTime = riseTime1
+        let riseToday2 = floor(Double(jd) + riseTime2 - 0.5) + 0.5
+        if jdToday == riseToday2, abs(riseTime2) < abs(riseTime1) {
+            riseTime = riseTime2
         }
 
-        var set_time: Double = set_time1
-        let setToday2: Double = floor(jd + set_time2 - 0.5) + 0.5
-        if jdToday == setToday2, abs(set_time2) < abs(set_time1) {
-            set_time = set_time2
+        var setTime = setTime1
+        let setToday2 = floor(Double(jd) + setTime2 - 0.5) + 0.5
+        if jdToday == setToday2, abs(setTime2) < abs(setTime1) {
+            setTime = setTime2
         }
-        rise = jd + rise_time
-        set = jd + set_time
+        rise = JulianDate(Double(jd) + riseTime)
+        set = JulianDate(Double(jd) + setTime)
     }
 
-    return EphemerisData(azimuth: azi, elevation: alt, rise: rise, set: set, transit: transit, transitElevation: transit_alt, rightAscension: ra, declination: dec, distance: dist, localApparentSiderealTime: lst)
+    return EphemerisData(azimuth: azi, elevation: alt, rise: rise, set: set, transit: transit, transitElevation: transitAltitude, rightAscension: ra, declination: dec, distance: dist, localApparentSiderealTime: lst)
 }
 
-func obtainAccurateRiseSetTransit(data: EphemerisData, keyPath: KeyPath<EphemerisData, Double?>, niter: Int, dataProvider: CalculationDataProvider, obsLat: Double, obsLon: Double, twilight: Twilight) -> Double? {
+func obtainAccurateRiseSetTransit(data: EphemerisData, keyPath: KeyPath<EphemerisData, JulianDate?>, niter: Int, locationProvider: ObjectLocationProvider, obsLat: Double, obsLon: Double, twilight: Twilight) -> JulianDate? {
     guard var jd = data[keyPath: keyPath] else { return nil } // nil means  no rise/set from that location
     var step: Double = -1
     
     for _ in 0 ..< niter {
-        let data = doCalc(dataProvider: dataProvider, jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
+        let data = doCalc(locationProvider: locationProvider, jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
         guard let newValue = data[keyPath: keyPath] else { return nil }
-        step = abs(jd - newValue)
+        step = abs(Double(jd) - Double(newValue))
         jd = newValue
     }
     
@@ -422,47 +379,32 @@ func obtainAccurateRiseSetTransit(data: EphemerisData, keyPath: KeyPath<Ephemeri
     return jd
 }
 
-extension Date {
-    var utcComponents: (year: Int, month: Int, day: Int, h: Int, m: Int, s: Int) {
+class JulianDate {
+    let julianDays: Double
+    
+    lazy var date: Date = {
+        let timeInterval = (julianDays + 0.5 - J1970) * SECONDS_PER_DAY
+        return Date(timeIntervalSince1970: timeInterval)
+    }()
+    
+    init(_ julianDays: Double) {
+        self.julianDays = julianDays
+    }
+
+    init(date: Date) {
+        julianDays = date.timeIntervalSince1970 / SECONDS_PER_DAY - 0.5 + J1970
+        self.date = date
+    }
+
+    private lazy var TTminusUT: Double = {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(abbreviation: "UTC")!
-        let dc = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: self)
+        let dc = calendar.dateComponents([.year, .month, .day], from: date)
         
-        return (
-            year: dc.year!,
-            month: dc.month!,
-            day: dc.day!,
-            h: dc.hour!,
-            m: dc.minute!,
-            s: dc.second!
-        )
-    }
-}
-
-
-let DAY_SECONDS:Double = 60 * 60 * 24
-let J1970:Double = 2440588
-
-func toJulian(_ date:Date) -> Double {
-    return Double(date.timeIntervalSince1970) / DAY_SECONDS - 0.5 + J1970
-}
-
-func fromJulian(_ j:Double) -> Date {
-    let timeInterval = (j + 0.5 - J1970) * DAY_SECONDS
-    return Date(timeIntervalSince1970: timeInterval)
-}
-
-func toDays(date:Date) -> Double {
-    return toJulian(date) - J2000
-}
-
-func timeFactor(_ jd: Double) -> Double {
-    let TTminusUT: Double = {
-        let (year, month, day, _, _, _) = fromJulian(jd).utcComponents
-        guard year > -600, year < 2200 else { return 0 }
+        guard let year = dc.year, let month = dc.month, let day = dc.day, year > -600, year < 2200 else { return 0 }
         
         let x = Double(year) + (Double(month) - 1 + Double(day) / 30) / 12
-        let x2: Double = x * x, x3: Double = x2 * x, x4: Double = x3 * x
+        let x2 = x * x, x3 = x2 * x, x4 = x3 * x
         if year < 1600 {
             return 10535.328003326353 - 9.995238627481024 * x + 0.003067307630020489 * x2 - 7.76340698361363e-6 * x3 + 3.1331045394223196e-9 * x4 +
                 8.225530854405553e-12 * x2 * x3 - 7.486164715632051e-15 * x4 * x2 + 1.9362461549678834e-18 * x4 * x3 - 8.489224937827653e-23 * x4 * x4
@@ -472,19 +414,23 @@ func timeFactor(_ jd: Double) -> Double {
                 1.7758961671447929e-10 * x2 * x3 - 2.7889902806153024e-13 * x2 * x4 + 1.0224295822336825e-16 * x3 * x4 - 1.2528102370680435e-20 * x4 * x4
     }()
 
-    return (jd + TTminusUT / SECONDS_PER_DAY - J2000) / JULIAN_DAYS_PER_CENTURY
+    lazy var timeFactor: Double = {
+        return (julianDays + TTminusUT / SECONDS_PER_DAY - J2000) / JULIAN_DAYS_PER_CENTURY
+    }()
 }
 
-
-
-
+extension Double {
+    init(_ jd: JulianDate) {
+        self = jd.julianDays
+    }
+}
 
 // SUN PARAMETERS (Formulae from "Calendrical Calculations")
 
 
 /// Correction to the mean ecliptic longitude
-func getSunLongitudeCorrection(jd: Double) -> Double {
-    let t = timeFactor(jd)
+func getSunLongitudeCorrection(jd: JulianDate) -> Double {
+    let t = jd.timeFactor
     let sanomaly = getSunAnomaly(jd: jd)
     var c: Double = (1.9146 - 0.004817 * t - 0.000014 * t * t) * sin(sanomaly)
     c = c + (0.019993 - 0.000101 * t) * sin(2 * sanomaly)
@@ -493,8 +439,8 @@ func getSunLongitudeCorrection(jd: Double) -> Double {
     return c
 }
 
-func getSunLongitude(jd: Double) -> Double {
-    let t = timeFactor(jd)
+func getSunLongitude(jd: JulianDate) -> Double {
+    let t = jd.timeFactor
     let longitudeCorrection = getSunLongitudeCorrection(jd: jd)
     
     // Now, let calculate nutation and aberration
@@ -505,13 +451,13 @@ func getSunLongitude(jd: Double) -> Double {
     return 280.46645 + 36000.76983 * t + 0.0003032 * t * t + longitudeCorrection + aberration
 }
 
-func getSunAnomaly(jd: Double) -> Double {
-    let t = timeFactor(jd)
+func getSunAnomaly(jd: JulianDate) -> Double {
+    let t = jd.timeFactor
     return toRadians(357.5291 + 35999.0503 * t - 0.0001559 * t * t - 4.8e-07 * t * t * t)
 }
 
-func getSunCalculationData(jd: Double) -> CalculationData {
-    let t = timeFactor(jd)
+func getSunObjectLocation(jd: JulianDate) -> ObjectLocation {
+    let t = jd.timeFactor
     
     let sanomaly = getSunAnomaly(jd: jd)
     let slongitude = getSunLongitude(jd: jd)
@@ -526,8 +472,8 @@ func getSunCalculationData(jd: Double) -> CalculationData {
 
 
 
-func getMoonCalculationData(jd: Double) -> CalculationData {
-    let t = timeFactor(jd)
+func getMoonObjectLocation(jd: JulianDate) -> ObjectLocation {
+    let t = jd.timeFactor
 
     // MOON PARAMETERS (Formulae from "Calendrical Calculations")
     let phase: Double = normalizeRadians(toRadians(297.8502042 + 445_267.1115168 * t - 0.00163 * t * t + t * t * t / 538_841 - t * t * t * t / 65_194_000))
@@ -595,8 +541,8 @@ func getMoonCalculationData(jd: Double) -> CalculationData {
 }
 
 // Get accurate Moon age
-func getMoonAge(jd: Double) -> Double {
-    let data = getMoonCalculationData(jd: jd)
+func getMoonAge(jd: JulianDate) -> Double {
+    let data = getMoonObjectLocation(jd: jd)
     return normalizeRadians(toRadians(data.longitude - getSunLongitude(jd: jd))) * LUNAR_CYCLE_DAYS / (2 * .pi)
 }
 
@@ -619,7 +565,7 @@ struct VisualAngles : Equatable {
 
 /// Method to calculate values of Moon Disk
 /// - Returns: [optical librations (lp), lunar coordinates of the centre of the disk (bp), position angle of axis (p), bright limb angle (bl), paralactic angle (par)]
-func getMoonVisualAngles(moonData: EphemerisData, sunData: EphemerisData, jd: Double, obsLat: Double) -> VisualAngles {
+func getMoonVisualAngles(moonData: EphemerisData, sunData: EphemerisData, jd: JulianDate, obsLat: Double) -> VisualAngles {
     let lst = sunData.localApparentSiderealTime
     let sunRA = sunData.rightAscension
     let sunDec = sunData.declination
@@ -628,7 +574,7 @@ func getMoonVisualAngles(moonData: EphemerisData, sunData: EphemerisData, jd: Do
     let moonRA = moonData.rightAscension
     let moonDec = moonData.declination
     
-    let t = timeFactor(jd)
+    let t = jd.timeFactor
     
     // Moon's argument of latitude
     let F = toRadians(93.2720993 + 483_202.0175273 * t - 0.0034029 * t * t - t * t * t / 3_526_000 + t * t * t * t / 863_310_000)
@@ -678,23 +624,17 @@ extension Double {
     }
 }
 
-extension Double {
-    var julianToDate: Date? {
-        Date(julianDay: self)
-    }
-}
+func calculateEphemerisData(locationProvider: ObjectLocationProvider, niter: Int, jd: JulianDate, obsLat: Double, obsLon: Double, twilight: Twilight) -> EphemerisData {
 
-func calculateEphemerisData(dataProvider: CalculationDataProvider, niter: Int, jd: Double, obsLat: Double, obsLon: Double, twilight: Twilight) -> EphemerisData {
-
-    var data = doCalc(dataProvider: dataProvider, jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
+    var data = doCalc(locationProvider: locationProvider, jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
 
     for keyPath in [\EphemerisData.rise, \EphemerisData.set, \EphemerisData.transit] {
-        data[keyPath: keyPath] = obtainAccurateRiseSetTransit(data: data, keyPath: keyPath, niter: niter, dataProvider: dataProvider, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
+        data[keyPath: keyPath] = obtainAccurateRiseSetTransit(data: data, keyPath: keyPath, niter: niter, locationProvider: locationProvider, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
     }
     
     // Update Sun's maximum elevation
     if let sunTransit = data.transit {
-        let calculationData = doCalc(dataProvider: dataProvider, jd: sunTransit, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
+        let calculationData = doCalc(locationProvider: locationProvider, jd: sunTransit, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
         data.transitElevation = calculationData.transitElevation
     } else {
         data.transitElevation = 0
@@ -705,6 +645,6 @@ func calculateEphemerisData(dataProvider: CalculationDataProvider, niter: Int, j
 
 extension Ephemeris {
     init(data: EphemerisData) {
-        self.init(azimuth: data.azimuth.toRadiansMeasurement, elevation: data.elevation.toRadiansMeasurement, rise: data.rise?.julianToDate, set: data.set?.julianToDate, transit: data.transit?.julianToDate, transitElevation: data.transitElevation.toRadiansMeasurement, distance: Measurement<UnitLength>(value: data.distance, unit: .astronomicalUnits))
+        self.init(azimuth: data.azimuth.toRadiansMeasurement, elevation: data.elevation.toRadiansMeasurement, rise: data.rise?.date, set: data.set?.date, transit: data.transit?.date, transitElevation: data.transitElevation.toRadiansMeasurement, distance: Measurement<UnitLength>(value: data.distance, unit: .astronomicalUnits))
     }
 }
