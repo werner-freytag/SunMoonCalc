@@ -2,11 +2,26 @@ import Foundation
 
 /// Original Java code: http://conga.oan.es/~alonso/doku.php?id=blog:sun_moon_position
 
+/** Radians to degrees. */
+let RAD_TO_DEG = 180.0 / .pi
+
+/** Degrees to radians. */
+let DEG_TO_RAD = 1.0 / RAD_TO_DEG
+
+/* Arcseconds to radians */
+let ARCSEC_TO_RAD = (DEG_TO_RAD / 3600.0)
+
 /// Astronomical Unit in km. As defined by JPL
 let AU: Double = 149_597_870.691
 
 /// Earth equatorial radius in km. IERS 2003 Conventions
 let EARTH_RADIUS: Double = 6378.1366
+
+/// Two times Pi.
+let TWO_PI = 2.0 * .pi
+
+/// Pi divided by two.
+let PI_OVER_TWO = Double.pi / 2
 
 /// Length of a sidereal day in days according to IERS Conventions
 let SIDEREAL_DAY_LENGTH: Double = 1.00273781191135448
@@ -49,6 +64,37 @@ public enum Twilight {
 
     /// The standard value of 34' for the refraction at the local horizon
     case horizon34arcmin
+}
+
+/// The set of bodies to compute ephemerides.
+enum Body {
+    case mercury
+    case venus
+    case mars
+    case jupiter
+    case saturn
+    case uranus
+    case neptune
+    case moon
+    case sun
+    case emb
+
+    private typealias Data = (index: Int, eqRadius: Double)
+
+    private static let dataMapping: [Self: Data] = [
+        .mercury: (0, 2439.7),
+        .venus: (1, 6051.8),
+        .mars: (3, 3396.19),
+        .jupiter: (4, 71492),
+        .saturn: (5, 60268),
+        .uranus: (6, 25559),
+        .neptune: (7, 24764),
+        .moon: (-2, 1737.4),
+        .sun: (-1, 696_000),
+        .emb: (2, 0),
+    ]
+
+    var eqRadius: Double { Self.dataMapping[self]!.eqRadius }
 }
 
 public struct Location {
@@ -124,31 +170,21 @@ public struct Ephemeris {
     let distance: Measurement<UnitLength>
 }
 
-/// Convert to degrees from radians
-func toDegrees<T: FloatingPoint>(_ rad: T) -> T {
-    rad * 180 / T.pi
-}
-
-/// Convert to radians from degrees
-func toRadians<T: FloatingPoint>(_ deg: T) -> T {
-    deg * T.pi / 180
-}
-
 /// Reduce an angle in radians to the range (0 - 2 Pi)
 /// - Parameter r: Angle in radians
 /// - Returns: Reduced angle in radians
 func normalizeRadians(_ r: Double) -> Double {
     switch r {
-    case ..<(-2 * .pi):
-        return r + 2 * .pi * (floor(-r / (2 * .pi)) + 1)
-    case (-2 * .pi) ..< 0:
-        return r + 2 * .pi
-    case 0 ..< (2 * .pi):
+    case ..<(-TWO_PI):
+        return r + TWO_PI * (floor(-r / TWO_PI) + 1)
+    case -TWO_PI ..< 0:
+        return r + TWO_PI
+    case 0 ..< TWO_PI:
         return r
-    case (2 * .pi) ..< (4 * .pi):
-        return r - 2 * .pi
+    case TWO_PI ..< (4 * .pi):
+        return r - TWO_PI
     default:
-        return r - 2 * .pi * floor(r / (2 * .pi))
+        return r - TWO_PI * floor(r / TWO_PI)
     }
 }
 
@@ -303,20 +339,20 @@ class ObjectCalculation {
         tmp = t2 * (-249.67 + t2 * (-39.05 + t2 * (7.12 + tmp)))
         tmp = t2 * (-1.55 + t2 * (1999.25 + t2 * (-51.38 + tmp)))
         tmp = (t2 * (-4680.93 + tmp)) / 3600
-        var angle = toRadians(23.4392911111111 + tmp) // obliquity
+        var angle = (23.4392911111111 + tmp) * DEG_TO_RAD // obliquity
         // Add nutation in obliquity
-        let M1: Double = toRadians(124.90 - 1934.134 * t + 0.002063 * t * t),
-            M2: Double = toRadians(201.11 + 72001.5377 * t + 0.00057 * t * t),
-            d: Double = 0.002558 * cos(M1) - 0.00015339 * cos(M2)
-        angle += toRadians(d)
+        let M1 = (124.90 - 1934.134 * t + 0.002063 * t * t) * DEG_TO_RAD,
+            M2 = (201.11 + 72001.5377 * t + 0.00057 * t * t) * DEG_TO_RAD,
+            d = 0.002558 * cos(M1) - 0.00015339 * cos(M2)
+        angle += d * DEG_TO_RAD
 
-        let lat = toRadians(data.latitude)
-        let lon = toRadians(data.longitude)
+        let lat = data.latitude
+        let lon = data.longitude
 
-        let cl: Double = cos(lat),
-            x: Double = data.distance * cos(lon) * cl
-        var y: Double = data.distance * sin(lon) * cl,
-            z: Double = data.distance * sin(lat)
+        let cl = cos(lat),
+            x = data.distance * cos(lon) * cl
+        var y = data.distance * sin(lon) * cl,
+            z = data.distance * sin(lat)
         tmp = y * cos(angle) - z * sin(angle)
         z = y * sin(angle) + z * cos(angle)
         y = tmp
@@ -327,7 +363,7 @@ class ObjectCalculation {
             secs = (Double(jd) - jd0) * SECONDS_PER_DAY
         var gmst: Double = (((((-6.2e-6 * T0) + 9.3104e-2) * T0) + 8_640_184.812866) * T0) + 24110.54841
         let msday: Double = 1 + (((((-1.86e-5 * T0) + 0.186208) * T0) + 8_640_184.812866) / (SECONDS_PER_DAY * JULIAN_DAYS_PER_CENTURY))
-        gmst = (gmst + msday * secs) * toRadians(15 / 3600)
+        gmst = (gmst + msday * secs) * (15 / 3600) * DEG_TO_RAD
         let lst: Double = gmst + obsLon
 
         // Obtain topocentric rectangular coordinates
@@ -345,7 +381,7 @@ class ObjectCalculation {
 
         // Obtain topocentric equatorial coordinates
         var ra: Double = 0,
-            dec: Double = Double.pi / 2
+            dec = PI_OVER_TWO
         if ztopo < 0 {
             dec = -dec
         }
@@ -359,19 +395,19 @@ class ObjectCalculation {
         let angh: Double = lst - ra
 
         // Obtain azimuth and geometric alt
-        let sinlat: Double = sin(obsLat),
-            coslat: Double = cos(obsLat),
-            sindec: Double = sin(dec), cosdec: Double = cos(dec),
-            h: Double = sinlat * sindec + coslat * cosdec * cos(angh)
-        var alt: Double = asin(h)
-        let azy: Double = sin(angh),
-            azx: Double = cos(angh) * sinlat - sindec * coslat / cosdec,
-            azi: Double = Double.pi + atan2(azy, azx) // 0 = north
+        let sinlat = sin(obsLat),
+            coslat = cos(obsLat),
+            sindec = sin(dec), cosdec: Double = cos(dec),
+            h = sinlat * sindec + coslat * cosdec * cos(angh)
+        var alt = asin(h)
+        let azy = sin(angh),
+            azx = cos(angh) * sinlat - sindec * coslat / cosdec,
+            azi = .pi + atan2(azy, azx) // 0 = north
         // Get apparent elevation
-        if alt > toRadians(-3) {
-            let r: Double = toRadians(0.016667) * abs(tan(Double.pi / 2 - toRadians(toDegrees(alt) + 7.31 / (toDegrees(alt) + 4.4))))
-            let refr: Double = r * (0.28 * 1010 / (10 + 273)) // Assuming pressure of 1010 mb and T = 10 C
-            alt = min(alt + refr, Double.pi / 2) // This is not accurate, but acceptable
+        if alt > -3 * DEG_TO_RAD {
+            let r = 0.016667 * DEG_TO_RAD * abs(tan(PI_OVER_TWO - (alt * RAD_TO_DEG + 7.31 / (alt * RAD_TO_DEG + 4.4)) * DEG_TO_RAD))
+            let refr = r * (0.28 * 1010 / (10 + 273)) // Assuming pressure of 1010 mb and T = 10 C
+            alt = min(alt + refr, PI_OVER_TWO) // This is not accurate, but acceptable
         }
 
         switch twilight {
@@ -380,27 +416,27 @@ class ObjectCalculation {
             // The 34' factor is the standard refraction at horizon.
             // Removing angular radius will do calculations for the center of the disk instead
             // of the upper limb.
-            tmp = -toRadians(34 / 60) - data.angularRadius
+            tmp = -(34 / 60) * DEG_TO_RAD - data.angularRadius
         case .civil:
-            tmp = toRadians(-6)
+            tmp = -6 * DEG_TO_RAD
         case .nautical:
-            tmp = toRadians(-12)
+            tmp = -12 * DEG_TO_RAD
         case .astronomical:
-            tmp = toRadians(-18)
+            tmp = -18 * DEG_TO_RAD
         }
 
         // Compute cosine of hour angle
         tmp = (sin(tmp) - sin(obsLat) * sin(dec)) / (cos(obsLat) * cos(dec))
-        let celestialHoursToEarthTime: Double = 180 / (15 * Double.pi) / 24 / SIDEREAL_DAY_LENGTH
+        let celestialHoursToEarthTime: Double = 180 / (15 * .pi) / 24 / SIDEREAL_DAY_LENGTH
 
         // Make calculations for the meridian
         let transitTime1 = celestialHoursToEarthTime * normalizeRadians(ra - lst),
-            transitTime2 = celestialHoursToEarthTime * (normalizeRadians(ra - lst) - 2 * Double.pi)
+            transitTime2 = celestialHoursToEarthTime * (normalizeRadians(ra - lst) - TWO_PI)
         var transitAltitude = asin(sin(dec) * sin(obsLat) + cos(dec) * cos(obsLat))
-        if transitAltitude > toRadians(-3) {
-            let r: Double = toRadians(0.016667) * abs(tan(Double.pi / 2 - (toDegrees(transitAltitude) + 7.31 / toRadians(toDegrees(transitAltitude) + 4.4)))),
+        if transitAltitude > -3 * DEG_TO_RAD {
+            let r: Double = 0.016667 * DEG_TO_RAD * abs(tan(PI_OVER_TWO - (transitAltitude * RAD_TO_DEG + 7.31 / (transitAltitude * RAD_TO_DEG + 4.4) * DEG_TO_RAD))),
                 refr: Double = r * (0.28 * 1010 / (10 + 273)) // Assuming pressure of 1010 mb and T = 10 C
-            transitAltitude = min(transitAltitude + refr, Double.pi / 2) // This is not accurate, but acceptable
+            transitAltitude = min(transitAltitude + refr, PI_OVER_TWO) // This is not accurate, but acceptable
         }
 
         // Obtain the current event in time
@@ -420,8 +456,8 @@ class ObjectCalculation {
             let ang_hor = abs(acos(tmp)),
                 riseTime1 = celestialHoursToEarthTime * normalizeRadians(ra - ang_hor - lst),
                 setTime1 = celestialHoursToEarthTime * normalizeRadians(ra + ang_hor - lst),
-                riseTime2 = celestialHoursToEarthTime * (normalizeRadians(ra - ang_hor - lst) - 2 * Double.pi),
-                setTime2 = celestialHoursToEarthTime * (normalizeRadians(ra + ang_hor - lst) - 2 * Double.pi)
+                riseTime2 = celestialHoursToEarthTime * (normalizeRadians(ra - ang_hor - lst) - TWO_PI),
+                setTime2 = celestialHoursToEarthTime * (normalizeRadians(ra + ang_hor - lst) - TWO_PI)
 
             // Obtain the current events in time. Preference should be given to the closest event
             // in time to the current calculation time (so that iteration in other method will converge)
@@ -475,23 +511,23 @@ class SunCalculation: ObjectCalculation {
 
     lazy var longitude: Double = {
         // Now, let calculate nutation and aberration
-        let M1 = toRadians(124.90 - 1934.134 * t + 0.002063 * t * t),
-            M2 = toRadians(201.11 + 72001.5377 * t + 0.00057 * t * t),
+        let M1 = (124.90 - 1934.134 * t + 0.002063 * t * t) * DEG_TO_RAD,
+            M2 = (201.11 + 72001.5377 * t + 0.00057 * t * t) * DEG_TO_RAD,
             aberration = -0.00569 - 0.0047785 * sin(M1) - 0.0003667 * sin(M2)
 
         return 280.46645 + 36000.76983 * t + 0.0003032 * t * t + longitudeCorrection + aberration
     }()
 
     lazy var anomaly: Double = {
-        toRadians(357.5291 + 35999.0503 * t - 0.0001559 * t * t - 4.8e-07 * t * t * t)
+        (357.5291 + 35999.0503 * t - 0.0001559 * t * t - 4.8e-07 * t * t * t) * DEG_TO_RAD
     }()
 
     override fileprivate var objectLocation: ObjectLocation {
-        let slatitude: Double = 0, // Sun's ecliptic latitude is always negligible
+        let latitude: Double = 0, // Sun's ecliptic latitude is always negligible
             ecc: Double = 0.016708617 - 4.2037e-05 * t - 1.236e-07 * t * t, // Eccentricity
-            v: Double = anomaly + toRadians(longitudeCorrection), // True anomaly
+            v: Double = anomaly + longitudeCorrection * DEG_TO_RAD, // True anomaly
             sdistance: Double = 1.000001018 * (1 - ecc * ecc) / (1 + ecc * cos(v)) // In UA
-        return (slatitude, longitude, sdistance, atan(696_000 / (AU * sdistance)))
+        return (latitude * DEG_TO_RAD, longitude * DEG_TO_RAD, sdistance, atan(696_000 / (AU * sdistance)))
     }
 }
 
@@ -500,25 +536,45 @@ class MoonCalculation: ObjectCalculation {
 
     // Anomalistic phase
     private lazy var anomaly: Double = {
-        toRadians(134.9634114 + 477_198.8676313 * t + 0.008997 * t * t + t * t * t / 69699 - t * t * t * t / 14_712_000)
+        (134.9634114 + 477_198.8676313 * t + 0.008997 * t * t + t * t * t / 69699 - t * t * t * t / 14_712_000) * DEG_TO_RAD
     }()
 
     override fileprivate var objectLocation: ObjectLocation {
-        // MOON PARAMETERS (Formulae from "Calendrical Calculations")
-        let phase: Double = normalizeRadians(toRadians(297.8502042 + 445_267.1115168 * t - 0.00163 * t * t + t * t * t / 538_841 - t * t * t * t / 65_194_000))
+        // These expansions up to t^7 for the mean elements are taken from S. L. Moshier, see program cmoon
+        /* Mean elongation of moon = D */
+        var x = (1.6029616009939659e+09 * t + 1.0722612202445078e+06)
+        x += (((((-3.207663637426e-013 * t + 2.555243317839e-011) * t + 2.560078201452e-009) * t - 3.702060118571e-005) * t + 6.9492746836058421e-03) * t /* D, t^3 */
+            - 6.7352202374457519e+00) * t * t /* D, t^2 */
+        let phase = normalizeRadians(ARCSEC_TO_RAD * x)
 
-        // Degrees from ascending node
-        var node: Double = (93.2720993 + 483_202.0175273 * t - 0.0034029 * t * t - t * t * t / 3_526_000 + t * t * t * t / 863_310_000)
-        node = toRadians(node)
+        /* Mean distance of moon from its ascending node = F */
+        x = (1.7395272628437717e+09 * t + 3.3577951412884740e+05)
+        x += (((((4.474984866301e-013 * t + 4.189032191814e-011) * t - 2.790392351314e-009) * t - 2.165750777942e-006) * t - 7.5311878482337989e-04) * t /* F, t^3 */
+            - 1.3117809789650071e+01) * t * t /* F, t^2 */
+        let node = normalizeRadians(ARCSEC_TO_RAD * x)
 
-        let E: Double = 1 - (0.002495 + 7.52e-06 * (t + 1)) * (t + 1)
+        /* Mean anomaly of sun = l' (J. Laskar) */
+        x = (1.2959658102304320e+08 * t + 1.2871027407441526e+06)
+        x += ((((((((1.62e-20 * t - 1.0390e-17) * t - 3.83508e-15) * t + 4.237343e-13) * t + 8.8555011e-11) * t - 4.77258489e-8) * t - 1.1297037031e-5) * t + 8.7473717367324703e-05) * t - 5.5281306421783094e-01) * t * t
+        let sanomaly = normalizeRadians(ARCSEC_TO_RAD * x)
 
-        let sanomaly = sun.anomaly
+        /* Mean anomaly of moon = l */
+        x = (1.7179159228846793e+09 * t + 4.8586817465825332e+05)
+        x += (((((-1.755312760154e-012 * t + 3.452144225877e-011) * t - 2.506365935364e-008) * t - 2.536291235258e-004) * t + 5.2099641302735818e-02) * t /* l, t^3 */
+            + 3.1501359071894147e+01) * t * t /* l, t^2 */
+        let anomaly = normalizeRadians(ARCSEC_TO_RAD * x)
+
+        /* Mean longitude of moon, re mean ecliptic and equinox of date = L */
+        x = (1.7325643720442266e+09 * t + 7.8593980921052420e+05)
+        x += (((((7.200592540556e-014 * t + 2.235210987108e-010) * t - 1.024222633731e-008) * t - 6.073960534117e-005) * t + 6.9017248528380490e-03) * t /* L, t^3 */
+            - 5.6550460027471399e+00) * t * t /* L, t^2 */
+        var longitude = normalizeRadians(ARCSEC_TO_RAD * x) * RAD_TO_DEG
 
         // Now longitude, with the three main correcting terms of evection,
         // variation, and equation of year, plus other terms (error<0.01 deg)
-        // P. Duffet's MOON program taken as reference
-        var longitude = (218.31664563 + 481_267.8811958 * t - 0.00146639 * t * t + t * t * t / 540_135.03 - t * t * t * t / 65_193_770.4)
+        // P. Duffet's MOON program taken as reference for the periodic terms
+        let E = 1.0 - (0.002495 + 7.52e-06 * (t + 1.0)) * (t + 1.0)
+
         longitude += 6.28875 * sin(anomaly) + 1.274018 * sin(2 * phase - anomaly) + 0.658309 * sin(2 * phase)
         longitude += 0.213616 * sin(2 * anomaly) - E * 0.185596 * sin(sanomaly) - 0.114336 * sin(2 * node)
         longitude += 0.058793 * sin(2 * phase - 2 * anomaly) + 0.057212 * E * sin(2 * phase - anomaly - sanomaly) + 0.05332 * sin(2 * phase + anomaly)
@@ -534,12 +590,6 @@ class MoonCalculation: ObjectCalculation {
         longitude += -1.773e-3 * sin(anomaly + 2 * (phase - node)) - 1.595e-3 * sin(2 * (node + phase))
         longitude += E * 1.22e-3 * sin(4 * phase - sanomaly - anomaly) - 1.11e-3 * sin(2 * (anomaly + node))
 
-        // Let's add nutation here also
-        let M1: Double = toRadians(124.90 - 1934.134 * t + 0.002063 * t * t),
-            M2: Double = toRadians(201.11 + 72001.5377 * t + 0.00057 * t * t),
-            d: Double = -0.0047785 * sin(M1) - 0.0003667 * sin(M2)
-        longitude += d
-
         // Now Moon parallax
         var parallax = 0.950724 + 0.051818 * cos(anomaly) + 0.009531 * cos(2 * phase - anomaly)
         parallax += 0.007843 * cos(2 * phase) + 0.002824 * cos(2 * anomaly)
@@ -549,7 +599,7 @@ class MoonCalculation: ObjectCalculation {
         parallax += 1.73e-4 * cos(3 * anomaly) + 1.67e-4 * cos(4 * phase - anomaly)
 
         // So Moon distance in Earth radii is, more or less,
-        let distance: Double = 1 / sin(toRadians(parallax))
+        let distance = 1.0 / sin(parallax * DEG_TO_RAD)
 
         // Ecliptic latitude with nodal phase (error<0.01 deg)
         var latitude = 5.128189 * sin(node) + 0.280606 * sin(node + anomaly) + 0.277693 * sin(anomaly - node)
@@ -562,12 +612,12 @@ class MoonCalculation: ObjectCalculation {
         latitude += E * 2.222e-3 * sin(2 * phase + node - sanomaly)
         latitude += E * 2.072e-3 * sin(2 * phase - node - sanomaly - anomaly)
 
-        return (latitude, longitude, distance * EARTH_RADIUS / AU, atan(1737.4 / (distance * EARTH_RADIUS)))
+        return (latitude * DEG_TO_RAD, longitude * DEG_TO_RAD, distance * EARTH_RADIUS / AU, atan(Body.moon.eqRadius / (distance * EARTH_RADIUS)))
     }
 
     // Get accurate Moon age
     var age: Double {
-        normalizeRadians(toRadians(objectLocation.longitude - sun.longitude)) * LUNAR_CYCLE_DAYS / (2 * .pi)
+        normalizeRadians(objectLocation.longitude - sun.longitude) * LUNAR_CYCLE_DAYS / TWO_PI
     }
 
     lazy var illumination: Double = {

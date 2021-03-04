@@ -27,24 +27,24 @@ extension MoonCalculation {
         let lst = sunData.localApparentSiderealTime
         let sunRA = sunData.rightAscension
         let sunDec = sunData.declination
-        let moonLon = toRadians(moonData.azimuth)
-        let moonLat = toRadians(moonData.elevation)
+        let moonLon = moonData.azimuth * DEG_TO_RAD
+        let moonLat = moonData.elevation * DEG_TO_RAD
         let moonRA = moonData.rightAscension
         let moonDec = moonData.declination
 
         let t = jd.timeFactor
 
         // Moon's argument of latitude
-        let F = toRadians(93.2720993 + 483_202.0175273 * t - 0.0034029 * t * t - t * t * t / 3_526_000 + t * t * t * t / 863_310_000)
+        let F = (93.2720993 + 483_202.0175273 * t - 0.0034029 * t * t - t * t * t / 3_526_000 + t * t * t * t / 863_310_000) * DEG_TO_RAD
 
         // Moon's inclination
-        let I = toRadians(1.54242)
+        let I = 1.54242 * DEG_TO_RAD
 
         // Moon's mean ascending node longitude
-        let omega = toRadians(125.0445550 - 1934.1361849 * t + 0.0020762 * t * t + t * t * t / 467_410 - t * t * t * t / 18_999_000)
+        let omega = (125.0445550 - 1934.1361849 * t + 0.0020762 * t * t + t * t * t / 467_410 - t * t * t * t / 18_999_000) * DEG_TO_RAD
 
         // Obliquity of ecliptic (approx, better formulae up)
-        let eps = toRadians(23.43929)
+        let eps = 23.43929 * DEG_TO_RAD
 
         // Obtain optical librations lp and bp
         let W = moonLon - omega,
