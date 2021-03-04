@@ -230,7 +230,7 @@ extension Double {
     }
 }
 
-typealias ObjectLocation = (latitude: Double, longitude: Double, distance: Double, angularRadius: Double)
+private typealias ObjectLocation = (latitude: Double, longitude: Double, distance: Double, angularRadius: Double)
 
 class ObjectCalculation {
     /// INPUT VARIABLES
@@ -253,11 +253,11 @@ class ObjectCalculation {
         self.twilight = twilight
     }
 
-    fileprivate lazy var t: Double = jd.timeFactor
+    fileprivate lazy var t = jd.timeFactor
 
-    class var accuracyIterationsOfRiseSetTransit: Int { 3 }
+    fileprivate class var accuracyIterationsOfRiseSetTransit: Int { 3 }
 
-    var objectLocation: ObjectLocation {
+    fileprivate var objectLocation: ObjectLocation {
         preconditionFailure("Must be implemented in child classes")
     }
 
@@ -472,7 +472,7 @@ class SunCalculation: ObjectCalculation {
         toRadians(357.5291 + 35999.0503 * t - 0.0001559 * t * t - 4.8e-07 * t * t * t)
     }()
 
-    override var objectLocation: ObjectLocation {
+    override fileprivate var objectLocation: ObjectLocation {
         let slatitude: Double = 0, // Sun's ecliptic latitude is always negligible
             ecc: Double = 0.016708617 - 4.2037e-05 * t - 1.236e-07 * t * t, // Eccentricity
             v: Double = anomaly + toRadians(longitudeCorrection), // True anomaly
@@ -491,7 +491,7 @@ class MoonCalculation: ObjectCalculation {
         toRadians(134.9634114 + 477_198.8676313 * t + 0.008997 * t * t + t * t * t / 69699 - t * t * t * t / 14_712_000)
     }()
 
-    override var objectLocation: ObjectLocation {
+    override fileprivate var objectLocation: ObjectLocation {
         // MOON PARAMETERS (Formulae from "Calendrical Calculations")
         let phase: Double = normalizeRadians(toRadians(297.8502042 + 445_267.1115168 * t - 0.00163 * t * t + t * t * t / 538_841 - t * t * t * t / 65_194_000))
 
@@ -566,13 +566,13 @@ class MoonCalculation: ObjectCalculation {
     }()
 }
 
-extension Double {
+private extension Double {
     var toRadiansMeasurement: Measurement<UnitAngle> {
         Measurement(value: self, unit: .radians)
     }
 }
 
-extension Ephemeris {
+private extension Ephemeris {
     init(data: EphemerisData) {
         self.init(azimuth: data.azimuth.toRadiansMeasurement, elevation: data.elevation.toRadiansMeasurement, rise: data.rise?.date, set: data.set?.date, transit: data.transit?.date, transitElevation: data.transitElevation.toRadiansMeasurement, distance: Measurement<UnitLength>(value: data.distance, unit: .astronomicalUnits))
     }

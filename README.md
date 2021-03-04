@@ -1,3 +1,5 @@
 # SunMoonCalc
 
-A description of this package.
+Calculates sun and moon ephemeris
+
+
