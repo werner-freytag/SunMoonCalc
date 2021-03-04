@@ -17,14 +17,18 @@ public struct DiskOrientationAngles: Equatable {
     let opticalLibration: (longPass: Measurement<UnitAngle>, bandPass: Measurement<UnitAngle>)
 }
 
-/// Method to calculate values of Moon Disk
-/// - Returns: [optical librations (lp), lunar coordinates of the centre of the disk (bp), position angle of axis (p), bright limb angle (bl), paralactic angle (par)]
+/// Calculates the orientation angles of the lunar disk figure. Illumination fraction
+/// is returned in the main program. Simplification of the method presented by
+/// Eckhardt, D. H., "Theory of the Libration of the Moon", Moon and planets 25, 3
+/// (1981), without the physical librations of the Moon. Accuracy around 0.5 deg
+/// for each value.
 extension MoonCalculation {
     var diskOrientationAngles: DiskOrientationAngles {
-        let sunData = SunCalculation(jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight).ephemerisData
+        let sunCalculation = SunCalculation(jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight, twilightMode: twilightMode)
+        let sunData = sunCalculation.ephemerisData
         let moonData = ephemerisData
 
-        let lst = sunData.localApparentSiderealTime
+        let lst = sunCalculation.localApparentSiderealTime
         let sunRA = sunData.rightAscension
         let sunDec = sunData.declination
         let moonLon = moonData.azimuth * DEG_TO_RAD
@@ -32,7 +36,7 @@ extension MoonCalculation {
         let moonRA = moonData.rightAscension
         let moonDec = moonData.declination
 
-        let t = jd.timeFactor
+        let t = jd.t
 
         // Moon's argument of latitude
         let F = (93.2720993 + 483_202.0175273 * t - 0.0034029 * t * t - t * t * t / 3_526_000 + t * t * t * t / 863_310_000) * DEG_TO_RAD
@@ -72,7 +76,7 @@ extension MoonCalculation {
 
         return .init(
             axisPosition: .init(value: p, unit: .radians), brightLimb: .init(value: bl, unit: .radians), paralactic: .init(value: par, unit: .radians),
-            opticalLibration: (.init(value: lp, unit: .radians), .init(value: lp, unit: .radians))
+            opticalLibration: (.init(value: lp, unit: .radians), .init(value: bp, unit: .radians))
         )
     }
 }

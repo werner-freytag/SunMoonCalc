@@ -67,6 +67,18 @@ public enum Twilight {
     case horizon34arcmin
 }
 
+/** Possible options to return the rise/set/transit times. */
+public enum TwilightMode {
+    /// Closest events.
+    case closest
+
+    /// Compute events for the current date in UT
+    case todayUT
+
+    /// Compute events for the current date in local time
+    case todayLT(timezone: Double)
+}
+
 /// The set of bodies to compute ephemerides.
 enum Body {
     case mercury
@@ -118,8 +130,9 @@ public class Sun {
     ///   - date: The date of observations
     ///   - location: Location of observation
     ///   - twilight: twilight configuration
-    init(location: Location, date: Date = .init(), twilight: Twilight = .horizon34arcmin) {
-        calculation = .init(date: date, location: location, twilight: twilight)
+    ///   - twilightMode: twilight mode
+    init(location: Location, date: Date = .init(), twilight: Twilight = .horizon34arcmin, twilightMode: TwilightMode = .todayUT) {
+        calculation = .init(date: date, location: location, twilight: twilight, twilightMode: twilightMode)
     }
 
     let calculation: SunCalculation
@@ -133,8 +146,9 @@ public class Moon {
     ///   - date: The date of observations
     ///   - location: Location of observation
     ///   - twilight: twilight configuration
-    init(location: Location, date: Date = .init(), twilight: Twilight = .horizon34arcmin) {
-        calculation = .init(date: date, location: location, twilight: twilight)
+    ///   - twilightMode: twilight mode
+    init(location: Location, date: Date = .init(), twilight: Twilight = .horizon34arcmin, twilightMode: TwilightMode = .todayUT) {
+        calculation = .init(date: date, location: location, twilight: twilight, twilightMode: twilightMode)
     }
 
     let calculation: MoonCalculation
@@ -216,9 +230,6 @@ struct EphemerisData {
 
     /// distance (AUs)
     let distance: Double
-
-    /// local apparent sidereal time (Julian days as per UTC)
-    let localApparentSiderealTime: Double
 }
 
 class JulianDate {
@@ -270,7 +281,7 @@ class JulianDate {
         return TTMinusUT
     }()
 
-    lazy var timeFactor: Double = {
+    lazy var t: Double = {
         (jd + TTminusUT / SECONDS_PER_DAY - J2000) / JULIAN_DAYS_PER_CENTURY
     }()
 }
@@ -289,22 +300,25 @@ class ObjectCalculation {
     let obsLat: Double
     let obsLon: Double
     let twilight: Twilight
+    let twilightMode: TwilightMode
 
-    required init(jd: JulianDate, obsLat: Double, obsLon: Double, twilight: Twilight) {
+    required init(jd: JulianDate, obsLat: Double, obsLon: Double, twilight: Twilight, twilightMode: TwilightMode) {
         self.jd = jd
         self.obsLat = obsLat
         self.obsLon = obsLon
         self.twilight = twilight
+        self.twilightMode = twilightMode
     }
 
-    required init(date: Date, location: Location, twilight: Twilight = .horizon34arcmin) {
+    required init(date: Date, location: Location, twilight: Twilight = .horizon34arcmin, twilightMode: TwilightMode) {
         jd = JulianDate(date: date)
         obsLon = location.longitude.converted(to: .radians).value
         obsLat = location.latitude.converted(to: .radians).value
         self.twilight = twilight
+        self.twilightMode = twilightMode
     }
 
-    fileprivate lazy var t = jd.timeFactor
+    fileprivate lazy var t = jd.t
 
     private class var accuracyIterationsOfRiseSetTransit: Int { 15 }
 
@@ -321,7 +335,7 @@ class ObjectCalculation {
 
         // Update maximum elevation
         if let transit = ephemerisData.transit {
-            let calculationData = Self(jd: transit, obsLat: obsLat, obsLon: obsLon, twilight: twilight).calculateEphemerisData()
+            let calculationData = Self(jd: transit, obsLat: obsLat, obsLon: obsLon, twilight: twilight, twilightMode: twilightMode).calculateEphemerisData()
             ephemerisData.transitElevation = calculationData.transitElevation
         } else {
             ephemerisData.transitElevation = 0
@@ -330,94 +344,132 @@ class ObjectCalculation {
         return ephemerisData
     }()
 
-    private func calculateEphemerisData() -> EphemerisData {
-        let data = objectLocation
-        let t = jd.timeFactor
+    // Compute nutation
+    lazy var nutation: (lon: Double, obl: Double) = {
+        let M1 = (124.90 - 1934.134 * t + 0.002063 * t * t) * DEG_TO_RAD
+        let M2 = (201.11 + 72001.5377 * t + 0.00057 * t * t) * DEG_TO_RAD
+        return (lon: (-(17.2026 + 0.01737 * t) * sin(M1) + (-1.32012 + 0.00013 * t) * sin(M2) + 0.2088 * sin(2 * M1)) * ARCSEC_TO_RAD,
+                obl: ((9.2088 + 0.00091 * t) * cos(M1) + (0.552204 - 0.00029 * t) * cos(M2) - 0.0904 * cos(2 * M1)) * ARCSEC_TO_RAD)
+    }()
 
-        // Ecliptic to equatorial coordinates
-        let t2: Double = t / 100
-        var tmp: Double = t2 * (27.87 + t2 * (5.79 + t2 * 2.45))
+    // Compute mean obliquity
+    lazy var meanObliquity: Double = {
+        var t2 = t / 100.0
+        var tmp = t2 * (27.87 + t2 * (5.79 + t2 * 2.45))
         tmp = t2 * (-249.67 + t2 * (-39.05 + t2 * (7.12 + tmp)))
         tmp = t2 * (-1.55 + t2 * (1999.25 + t2 * (-51.38 + tmp)))
-        tmp = (t2 * (-4680.93 + tmp)) / 3600
-        var angle = (23.4392911111111 + tmp) * DEG_TO_RAD // obliquity
-        // Add nutation in obliquity
-        let M1 = (124.90 - 1934.134 * t + 0.002063 * t * t) * DEG_TO_RAD,
-            M2 = (201.11 + 72001.5377 * t + 0.00057 * t * t) * DEG_TO_RAD,
-            d = 0.002558 * cos(M1) - 0.00015339 * cos(M2)
-        angle += d * DEG_TO_RAD
+        tmp = (t2 * (-4680.93 + tmp)) / 3600.0
+        return (23.4392911111111 + tmp) * DEG_TO_RAD
+    }()
 
-        let lat = data.latitude
-        let lon = data.longitude
+    // Obtain local apparent sidereal time
+    lazy var localApparentSiderealTime: Double = {
+        var jd0 = floor(Double(jd) - 0.5) + 0.5
+        var T0 = (jd0 - J2000) / JULIAN_DAYS_PER_CENTURY
+        var secs = (Double(jd) - jd0) * SECONDS_PER_DAY
+        var gmst = (((((-6.2e-6 * T0) + 9.3104e-2) * T0) + 8_640_184.812866) * T0) + 24110.54841
+        var msday = 1.0 + (((((-1.86e-5 * T0) + 0.186208) * T0) + 8_640_184.812866) / (SECONDS_PER_DAY * JULIAN_DAYS_PER_CENTURY))
+        gmst = (gmst + msday * secs) * (15.0 / 3600.0) * DEG_TO_RAD
+        return normalizeRadians(gmst + obsLon + nutation.lon * cos(meanObliquity + nutation.obl))
+    }()
 
-        let cl = cos(lat),
-            x = data.distance * cos(lon) * cl
-        var y = data.distance * sin(lon) * cl,
-            z = data.distance * sin(lat)
-        tmp = y * cos(angle) - z * sin(angle)
-        z = y * sin(angle) + z * cos(angle)
+    private func getTwilightEvent(celestialHoursToEarthTime: Double, rightAscension: Double, angularHour: Double) -> Double {
+        let jd_UT = Double(jd)
+        let jdToday_UT = floor(jd_UT - 0.5) + 0.5
+
+        var eventTime = celestialHoursToEarthTime * normalizeRadians(rightAscension + angularHour - localApparentSiderealTime)
+        let eventTimePrev = eventTime - celestialHoursToEarthTime * TWO_PI
+        let eventDatePrev_UT = floor(jd_UT + eventTimePrev - 0.5) + 0.5
+
+        switch twilightMode {
+        case .closest where abs(eventTimePrev) < abs(eventTime):
+            eventTime = eventTimePrev
+        case .todayUT:
+            let eventDate_UT = floor(jd_UT + eventTime - 0.5) + 0.5
+            if jdToday_UT != eventDate_UT { eventTime = -jd_UT - 1 }
+            if jdToday_UT == eventDatePrev_UT { eventTime = eventTimePrev }
+
+        case let .todayLT(timezone):
+            let tz = timezone / 24.0, jdToday_LT = floor(jd_UT + tz - 0.5) + 0.5
+            let eventDate_LT = floor(jd_UT + tz + eventTime - 0.5) + 0.5
+            if jdToday_LT != eventDate_LT { eventTime = -jd_UT - 1 }
+
+            let eventDatePrev_LT = floor(jd_UT + tz + eventTimePrev - 0.5) + 0.5
+            if jdToday_LT == eventDatePrev_LT { eventTime = eventTimePrev }
+
+            let eventTimeNext = celestialHoursToEarthTime * (normalizeRadians(rightAscension + angularHour - localApparentSiderealTime) + TWO_PI)
+            let eventDateNext_LT = floor(jd_UT + tz + eventTimeNext - 0.5) + 0.5
+            if jdToday_LT == eventDateNext_LT { eventTime = eventTimeNext }
+
+        default:
+            break
+        }
+
+        return jd_UT + eventTime
+    }
+
+    private func calculateEphemerisData(geocentric: Bool = false) -> EphemerisData {
+        let data = objectLocation
+
+        // Ecliptic to equatorial coordinates using true obliquity
+        let cl = cos(data.latitude)
+        let x = data.distance * cos(data.longitude) * cl
+        var y = data.distance * sin(data.longitude) * cl
+        var z = data.distance * sin(data.latitude)
+
+        let sinEcl = sin(meanObliquity + nutation.obl), cosEcl = cos(meanObliquity + nutation.obl)
+        var tmp = y * cosEcl - z * sinEcl
+        z = y * sinEcl + z * cosEcl
         y = tmp
 
-        // Obtain local apparent sidereal time
-        let jd0 = floor(Double(jd) - 0.5) + 0.5,
-            T0 = (jd0 - J2000) / JULIAN_DAYS_PER_CENTURY,
-            secs = (Double(jd) - jd0) * SECONDS_PER_DAY
-        var gmst: Double = (((((-6.2e-6 * T0) + 9.3104e-2) * T0) + 8_640_184.812866) * T0) + 24110.54841
-        let msday: Double = 1 + (((((-1.86e-5 * T0) + 0.186208) * T0) + 8_640_184.812866) / (SECONDS_PER_DAY * JULIAN_DAYS_PER_CENTURY))
-        gmst = (gmst + msday * secs) * (15 / 3600) * DEG_TO_RAD
-        let lst: Double = gmst + obsLon
-
         // Obtain topocentric rectangular coordinates
-        // Set radiusAU = 0 for geocentric calculations
-        // (rise/set/transit will have no sense in this case)
-        let radiusAU: Double = EARTH_RADIUS / AU
-        let correction: [Double] = [
-            radiusAU * cos(obsLat) * cos(lst),
-            radiusAU * cos(obsLat) * sin(lst),
-            radiusAU * sin(obsLat),
+        let sinLat = sin(obsLat)
+        let cosLat = cos(obsLat)
+        let radiusAU = geocentric ? 0 : EARTH_RADIUS / AU
+        let correction = [
+            radiusAU * cosLat * cos(localApparentSiderealTime),
+            radiusAU * cosLat * sin(localApparentSiderealTime),
+            radiusAU * sinLat,
         ]
-        let xtopo: Double = x - correction[0],
-            ytopo: Double = y - correction[1],
-            ztopo: Double = z - correction[2]
+        let xtopo = x - correction[0]
+        let ytopo = y - correction[1]
+        let ztopo = z - correction[2]
 
         // Obtain topocentric equatorial coordinates
-        var ra: Double = 0,
-            dec = PI_OVER_TWO
-        if ztopo < 0 {
-            dec = -dec
+        var rightAscension = 0.0
+        var declination = PI_OVER_TWO
+        if ztopo < 0.0 { declination = -declination }
+        if ytopo != 0.0 || xtopo != 0.0 {
+            rightAscension = atan2(ytopo, xtopo)
+            declination = atan2(ztopo / hypot(xtopo, ytopo), 1.0)
         }
-        if ytopo != 0 || xtopo != 0 {
-            ra = atan2(ytopo, xtopo)
-            dec = atan2(ztopo / sqrt(xtopo * xtopo + ytopo * ytopo), 1)
-        }
-        let dist: Double = sqrt(xtopo * xtopo + ytopo * ytopo + ztopo * ztopo)
+        let distance = sqrt(xtopo * xtopo + ytopo * ytopo + ztopo * ztopo)
 
         // Hour angle
-        let angh: Double = lst - ra
+        let angh = localApparentSiderealTime - rightAscension
 
         // Obtain azimuth and geometric alt
-        let sinlat = sin(obsLat),
-            coslat = cos(obsLat),
-            sindec = sin(dec), cosdec: Double = cos(dec),
-            h = sinlat * sindec + coslat * cosdec * cos(angh)
+        let sinDec = sin(declination), cosDec = cos(declination)
+        let h = sinLat * sinDec + cosLat * cosDec * cos(angh)
         var alt = asin(h)
-        let azy = sin(angh),
-            azx = cos(angh) * sinlat - sindec * coslat / cosdec,
-            azi = .pi + atan2(azy, azx) // 0 = north
-        // Get apparent elevation
-        if alt > -3 * DEG_TO_RAD {
-            let r = 0.016667 * DEG_TO_RAD * abs(tan(PI_OVER_TWO - (alt * RAD_TO_DEG + 7.31 / (alt * RAD_TO_DEG + 4.4)) * DEG_TO_RAD))
-            let refr = r * (0.28 * 1010 / (10 + 273)) // Assuming pressure of 1010 mb and T = 10 C
-            alt = min(alt + refr, PI_OVER_TWO) // This is not accurate, but acceptable
+        let azy = sin(angh)
+        let azx = cos(angh) * sinLat - sinDec * cosLat / cosDec
+        let azi = .pi + atan2(azy, azx) // 0 = north
+
+        if geocentric {
+            return EphemerisData(azimuth: azi, elevation: alt, rise: nil, set: nil, transit: nil, transitElevation: -1, rightAscension: normalizeRadians(rightAscension), declination: declination, distance: distance)
         }
+
+        // Get apparent elevation
+        alt = refraction(alt)
 
         switch twilight {
         case .horizon34arcmin:
-            // Rise, set, transit times, taking into account Sun/Moon angular radius
+            // Rise, set, transit times, taking into account Sun/Moon angular radius (data.angularRadius).
             // The 34' factor is the standard refraction at horizon.
             // Removing angular radius will do calculations for the center of the disk instead
             // of the upper limb.
-            tmp = -(34 / 60) * DEG_TO_RAD - data.angularRadius
+            tmp = -(34.0 / 60.0) * DEG_TO_RAD - data.angularRadius
         case .civil:
             tmp = -6 * DEG_TO_RAD
         case .nautical:
@@ -427,57 +479,26 @@ class ObjectCalculation {
         }
 
         // Compute cosine of hour angle
-        tmp = (sin(tmp) - sin(obsLat) * sin(dec)) / (cos(obsLat) * cos(dec))
-        let celestialHoursToEarthTime: Double = 180 / (15 * .pi) / 24 / SIDEREAL_DAY_LENGTH
+        tmp = (sin(tmp) - sinLat * sinDec) / (cosLat * cosDec)
+        /** Length of a sidereal day in days according to IERS Conventions. */
+        let celestialHoursToEarthTime = 1.0 / (SIDEREAL_DAY_LENGTH * TWO_PI)
 
         // Make calculations for the meridian
-        let transitTime1 = celestialHoursToEarthTime * normalizeRadians(ra - lst),
-            transitTime2 = celestialHoursToEarthTime * (normalizeRadians(ra - lst) - TWO_PI)
-        var transitAltitude = asin(sin(dec) * sin(obsLat) + cos(dec) * cos(obsLat))
-        if transitAltitude > -3 * DEG_TO_RAD {
-            let r: Double = 0.016667 * DEG_TO_RAD * abs(tan(PI_OVER_TWO - (transitAltitude * RAD_TO_DEG + 7.31 / (transitAltitude * RAD_TO_DEG + 4.4) * DEG_TO_RAD))),
-                refr: Double = r * (0.28 * 1010 / (10 + 273)) // Assuming pressure of 1010 mb and T = 10 C
-            transitAltitude = min(transitAltitude + refr, PI_OVER_TWO) // This is not accurate, but acceptable
-        }
+        var transitAltitude = asin(sinDec * sinLat + cosDec * cosLat)
+        transitAltitude = refraction(transitAltitude)
 
-        // Obtain the current event in time
-        var transitTime = transitTime1
-        let jdToday = floor(Double(jd) - 0.5) + 0.5,
-            transitToday2 = floor(Double(jd) + transitTime2 - 0.5) + 0.5
-        // Obtain the transit time. Preference should be given to the closest event
-        // in time to the current calculation time
-        if jdToday == transitToday2, abs(transitTime2) < abs(transitTime1) {
-            transitTime = transitTime2
-        }
-        let transit = JulianDate(Double(jd) + transitTime)
+        // Obtain the current transit event in time
+        let transit = JulianDate(getTwilightEvent(celestialHoursToEarthTime: celestialHoursToEarthTime, rightAscension: rightAscension, angularHour: 0))
 
         // Make calculations for rise and set
         var rise: JulianDate?, set: JulianDate?
-        if abs(tmp) <= 1 {
-            let ang_hor = abs(acos(tmp)),
-                riseTime1 = celestialHoursToEarthTime * normalizeRadians(ra - ang_hor - lst),
-                setTime1 = celestialHoursToEarthTime * normalizeRadians(ra + ang_hor - lst),
-                riseTime2 = celestialHoursToEarthTime * (normalizeRadians(ra - ang_hor - lst) - TWO_PI),
-                setTime2 = celestialHoursToEarthTime * (normalizeRadians(ra + ang_hor - lst) - TWO_PI)
-
-            // Obtain the current events in time. Preference should be given to the closest event
-            // in time to the current calculation time (so that iteration in other method will converge)
-            var riseTime = riseTime1
-            let riseToday2 = floor(Double(jd) + riseTime2 - 0.5) + 0.5
-            if jdToday == riseToday2, abs(riseTime2) < abs(riseTime1) {
-                riseTime = riseTime2
-            }
-
-            var setTime = setTime1
-            let setToday2 = floor(Double(jd) + setTime2 - 0.5) + 0.5
-            if jdToday == setToday2, abs(setTime2) < abs(setTime1) {
-                setTime = setTime2
-            }
-            rise = JulianDate(Double(jd) + riseTime)
-            set = JulianDate(Double(jd) + setTime)
+        if abs(tmp) <= 1.0 {
+            let angularHour = abs(acos(tmp))
+            rise = JulianDate(getTwilightEvent(celestialHoursToEarthTime: celestialHoursToEarthTime, rightAscension: rightAscension, angularHour: -angularHour))
+            set = JulianDate(getTwilightEvent(celestialHoursToEarthTime: celestialHoursToEarthTime, rightAscension: rightAscension, angularHour: angularHour))
         }
 
-        return EphemerisData(azimuth: azi, elevation: alt, rise: rise, set: set, transit: transit, transitElevation: transitAltitude, rightAscension: ra, declination: dec, distance: dist, localApparentSiderealTime: lst)
+        return EphemerisData(azimuth: azi, elevation: alt, rise: rise, set: set, transit: transit, transitElevation: transitAltitude, rightAscension: rightAscension, declination: declination, distance: distance)
     }
 
     private func obtainAccurateRiseSetTransit(data: EphemerisData, keyPath: KeyPath<EphemerisData, JulianDate?>) -> JulianDate? {
@@ -485,7 +506,7 @@ class ObjectCalculation {
         var step: Double = -1
 
         for _ in 0 ..< Self.accuracyIterationsOfRiseSetTransit {
-            let ephemerisData = Self(jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight).calculateEphemerisData()
+            let ephemerisData = Self(jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight, twilightMode: twilightMode).calculateEphemerisData()
             guard let newValue = ephemerisData[keyPath: keyPath] else { return nil }
             step = abs(Double(jd) - Double(newValue))
             jd = newValue
@@ -496,6 +517,41 @@ class ObjectCalculation {
 
         return jd
     }
+}
+
+/// Corrects geometric elevation for refraction if it is greater than -3 degrees.
+/// - Parameter alt: Geometric elevation in radians.
+/// - Returns: Apparent elevation.
+private func refraction(_ alt: Double) -> Double {
+    guard alt > -3 * DEG_TO_RAD else { return alt }
+
+    var alt = alt
+    var altIn = alt, prevAlt = alt
+    var niter = 0
+    repeat {
+        let altOut = computeGeometricElevation(alt)
+        alt = altIn - (altOut - alt)
+        niter += 1
+        if abs(prevAlt - alt) < 0.001 * DEG_TO_RAD { break }
+        prevAlt = alt
+    } while niter < 8
+
+    return alt
+}
+
+/// Compute geometric elevation from apparent elevation.
+/// - Parameter alt: Apparent elevation in radians.
+/// - Returns: Geometric elevation in radians.
+private func computeGeometricElevation(_ alt: Double) -> Double {
+    let Ps: Double = 1010 // Pressure in mb
+    let Ts = 10 + 273.15 // Temperature in K
+    let altDeg = alt * RAD_TO_DEG
+
+    // Bennet 1982 formulae for optical wavelengths, do the job but not accurate close to horizon
+    // Yan 1996 formulae would be better but with much more lines of code
+    let r = DEG_TO_RAD * abs(tan(PI_OVER_TWO - (altDeg + 7.31 / (altDeg + 4.4)) * DEG_TO_RAD)) / 60.0
+    let refr = r * (0.28 * Ps / Ts)
+    return min(alt - refr, PI_OVER_TWO)
 }
 
 // SUN PARAMETERS (Formulae from "Calendrical Calculations")
@@ -609,7 +665,7 @@ class SunCalculation: ObjectCalculation {
 }
 
 class MoonCalculation: ObjectCalculation {
-    private lazy var sun = SunCalculation(jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
+    private lazy var sun = SunCalculation(jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight, twilightMode: twilightMode)
 
     // Anomalistic phase
     private lazy var anomaly: Double = {
