@@ -114,12 +114,12 @@ public struct Location {
     let latitude: Measurement<UnitAngle>
     let longitude: Measurement<UnitAngle>
 
-    init(latitude: Measurement<UnitAngle>, longitude: Measurement<UnitAngle>) {
+    public init(latitude: Measurement<UnitAngle>, longitude: Measurement<UnitAngle>) {
         self.latitude = latitude
         self.longitude = longitude
     }
 
-    init(_ latitude: Double, _ longitude: Double) {
+    public init(_ latitude: Double, _ longitude: Double) {
         self.init(latitude: .init(value: latitude, unit: .degrees), longitude: .init(value: longitude, unit: .degrees))
     }
 }
@@ -137,7 +137,7 @@ public class Sun {
 
     let calculation: SunCalculation
 
-    lazy var ephemeris: Ephemeris = { .init(data: calculation.ephemerisData) }()
+    public lazy var ephemeris: Ephemeris = { .init(data: calculation.ephemerisData) }()
 }
 
 public class Moon {
@@ -153,36 +153,36 @@ public class Moon {
 
     let calculation: MoonCalculation
 
-    lazy var ephemeris: Ephemeris = { .init(data: calculation.ephemerisData) }()
+    public lazy var ephemeris: Ephemeris = { .init(data: calculation.ephemerisData) }()
 
     /// Age (days: 0-29.5)
-    lazy var age: Double = { calculation.age }()
+    public lazy var age: Double = { calculation.age }()
 
     /// Illumination (percentage)
-    lazy var illumination: Double = { calculation.illumination }()
+    public lazy var illumination: Double = { calculation.illumination }()
 }
 
 public struct Ephemeris {
     /// Azimuth (radians)
-    let azimuth: Measurement<UnitAngle>
+    public let azimuth: Measurement<UnitAngle>
 
     /// Elevation (radians)
-    let elevation: Measurement<UnitAngle>
+    public let elevation: Measurement<UnitAngle>
 
     /// Rise (Julian days as per UTC)
-    let rise: Date?
+    public let rise: Date?
 
     /// Set (Date per UTC)
-    let set: Date?
+    public let set: Date?
 
     /// Transit (Date per UTC)
-    let transit: Date?
+    public let transit: Date?
 
     /// Transit elevation (radians)
-    let transitElevation: Measurement<UnitAngle>
+    public let transitElevation: Measurement<UnitAngle>
 
     /// Sun distance (AUs)
-    let distance: Measurement<UnitLength>
+    public let distance: Measurement<UnitLength>
 }
 
 /// Reduce an angle in radians to the range (0 - 2 Pi)

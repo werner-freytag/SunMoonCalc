@@ -6,15 +6,15 @@ public struct DiskOrientationAngles: Equatable {
     }
 
     /// Position angle of axis (radians)
-    let axisPosition: Measurement<UnitAngle>
+    public let axisPosition: Measurement<UnitAngle>
 
     /// Bright limb angle (radians)
-    let brightLimb: Measurement<UnitAngle>
+    public let brightLimb: Measurement<UnitAngle>
 
     /// Paralactic angle (radians)
-    let paralactic: Measurement<UnitAngle>
+    public let paralactic: Measurement<UnitAngle>
 
-    let opticalLibration: (longPass: Measurement<UnitAngle>, bandPass: Measurement<UnitAngle>)
+    public let opticalLibration: (longPass: Measurement<UnitAngle>, bandPass: Measurement<UnitAngle>)
 }
 
 /// Calculates the orientation angles of the lunar disk figure. Illumination fraction
@@ -87,16 +87,16 @@ public extension Moon {
 
 public struct ViewingAngles {
     /// Phase angle which is related to the illumination
-    var phase: Measurement<UnitAngle>
+    public var phase: Measurement<UnitAngle>
 
     /// Angle of moon rotation
-    var moon: Measurement<UnitAngle>
+    public var moon: Measurement<UnitAngle>
 
     /// Angle of shadow rotation
-    var shadow: Measurement<UnitAngle>
+    public var shadow: Measurement<UnitAngle>
 }
 
-extension Moon {
+public extension Moon {
     var diskOrientationViewingAngles: ViewingAngles {
         .init(
             phase: Measurement(value: acos(-cos(age / LUNAR_CYCLE_DAYS * 2 * .pi)), unit: .radians).converted(to: .degrees),
