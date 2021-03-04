@@ -131,7 +131,7 @@ public class Sun {
     ///   - location: Location of observation
     ///   - twilight: twilight configuration
     ///   - twilightMode: twilight mode
-    init(location: Location, date: Date = .init(), twilight: Twilight = .horizon34arcmin, twilightMode: TwilightMode = .todayUT) {
+    public init(location: Location, date: Date = .init(), twilight: Twilight = .horizon34arcmin, twilightMode: TwilightMode = .todayUT) {
         calculation = .init(date: date, location: location, twilight: twilight, twilightMode: twilightMode)
     }
 
@@ -147,7 +147,7 @@ public class Moon {
     ///   - location: Location of observation
     ///   - twilight: twilight configuration
     ///   - twilightMode: twilight mode
-    init(location: Location, date: Date = .init(), twilight: Twilight = .horizon34arcmin, twilightMode: TwilightMode = .todayUT) {
+    public init(location: Location, date: Date = .init(), twilight: Twilight = .horizon34arcmin, twilightMode: TwilightMode = .todayUT) {
         calculation = .init(date: date, location: location, twilight: twilight, twilightMode: twilightMode)
     }
 
@@ -256,7 +256,7 @@ class JulianDate {
 
         let year = Double(dc.year!), month = Double(dc.month!), day = Double(dc.day!)
 
-        var TTMinusUT: Double = 0
+        var TTminusUT: Double = 0
         let ndot = -25.858
         var c0 = 0.91072 * (ndot + 26.0)
         if year < -500 || year >= 2200 {
@@ -278,7 +278,7 @@ class JulianDate {
         let c = -c0 * pow((jd - 2_435_109.0) / 36525.0, 2)
         if year < 1955 || year > 2005 { TTminusUT += c }
 
-        return TTMinusUT
+        return TTminusUT
     }()
 
     lazy var t: Double = {
@@ -754,7 +754,7 @@ class MoonCalculation: ObjectCalculation {
     }
 
     lazy var illumination: Double = {
-        let sun = sun.ephemerisData
+        let sun = self.sun.ephemerisData
         let moon = ephemerisData
 
         return (1 - cos(acos(sin(sun.declination) * sin(moon.declination) + cos(sun.declination) * cos(moon.declination) * cos(moon.rightAscension - sun.rightAscension)))) * 0.5

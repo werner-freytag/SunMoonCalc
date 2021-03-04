@@ -15,13 +15,13 @@ final class SunMoonCalcTests: XCTestCase {
         let sun = Sun(location: location, date: date)
 
         XCTAssertEqual(sun.ephemeris, Ephemeris(
-            azimuth: Measurement(value: 0.2248122999945994, unit: .radians),
-            elevation: Measurement(value: -0.871847920500529, unit: .radians),
+            azimuth: Measurement(value: 0.22479019677783363, unit: .radians),
+            elevation: Measurement(value: -0.8718445884699833, unit: .radians),
             rise: dateFormatter.date(from: "2021-02-26 06:00:25 +0000")!,
             set: dateFormatter.date(from: "2021-02-26 16:53:26 +0000")!,
             transit: dateFormatter.date(from: "2021-02-26 11:26:32 +0000")!,
-            transitElevation: Measurement(value: 0.5820640491655357, unit: .radians),
-            distance: Measurement(value: 0.9900657900481319, unit: .astronomicalUnits)
+            transitElevation: Measurement(value: 0.5820695076646274, unit: .radians),
+            distance: Measurement(value: 0.9900659837432739, unit: .astronomicalUnits)
         ))
     }
 
@@ -32,17 +32,17 @@ final class SunMoonCalcTests: XCTestCase {
         let moon = Moon(location: location, date: date)
 
         XCTAssertEqual(moon.ephemeris, Ephemeris(
-            azimuth: Measurement(value: 3.8689066714962914, unit: .radians),
-            elevation: Measurement(value: 0.9532944455050057, unit: .radians),
-            rise: dateFormatter.date(from: "2021-02-26 15:44:05 +0000")!,
-            set: dateFormatter.date(from: "2021-02-26 06:02:33 +0000")!,
-            transit: dateFormatter.date(from: "2021-02-26 23:14:58 +0000")!,
-            transitElevation: Measurement(value: 0.9785343943804162, unit: .radians),
-            distance: Measurement(value: 0.00247989875343263, unit: .astronomicalUnits)
+            azimuth: Measurement(value: 3.8685629085102007, unit: .radians),
+            elevation: Measurement(value: 0.953334406991476, unit: .radians),
+            rise: dateFormatter.date(from: "2021-02-26 15:44:09 +0000")!,
+            set: dateFormatter.date(from: "2021-02-26 06:02:35 +0000")!,
+            transit: dateFormatter.date(from: "2021-02-26 23:15:00 +0000")!,
+            transitElevation: Measurement(value: 0.9784585056858743, unit: .radians),
+            distance: Measurement(value: 0.002479871337300747, unit: .astronomicalUnits)
         ))
 
-        XCTAssertEqual(moon.age, 13.18057635505499)
-        XCTAssertEqual(moon.illumination, 0.9753178310696914)
+        XCTAssertEqual(moon.age, 13.1775849881569)
+        XCTAssertEqual(moon.illumination, 0.9753461326608158)
     }
 
     func testMoonDiskOrientation() {
@@ -52,11 +52,11 @@ final class SunMoonCalcTests: XCTestCase {
         let result = Moon(location: location, date: date).diskOrientationAngles
 
         XCTAssertEqual(result, .init(
-            axisPosition: Measurement(value: 0.3373337857141483, unit: .radians),
-            brightLimb: Measurement(value: 5.252072231687541, unit: .radians),
-            paralactic: Measurement(value: 0.48709403178431765, unit: .radians),
-            opticalLibration: (longPass: Measurement(value: 3.806966322825474, unit: .radians),
-                               bandPass: Measurement(value: 0.008969020286691026, unit: .radians))
+            axisPosition: Measurement(value: 0.33737966865295616, unit: .radians),
+            brightLimb: Measurement(value: 5.252281717032904, unit: .radians),
+            paralactic: Measurement(value: 0.48687916720474905, unit: .radians),
+            opticalLibration: (longPass: Measurement(value: 3.80676880991291, unit: .radians),
+                               bandPass: Measurement(value: 0.0089683662835753, unit: .radians))
         ))
     }
 }
