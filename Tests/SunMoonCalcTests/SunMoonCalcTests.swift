@@ -15,13 +15,13 @@ final class SunMoonCalcTests: XCTestCase {
         let sun = Sun(location: location, date: date)
 
         XCTAssertEqual(sun.ephemeris, Ephemeris(
-            azimuth: Measurement(value: 0.2250523624268812, unit: .radians),
-            elevation: Measurement(value: -0.8718563214579441, unit: .radians),
+            azimuth: Measurement(value: 0.22491823240857967, unit: .radians),
+            elevation: Measurement(value: -0.8718361145706249, unit: .radians),
             rise: dateFormatter.date(from: "2021-02-26 06:00:24 +0000")!,
-            set: dateFormatter.date(from: "2021-02-26 16:53:23 +0000")!,
-            transit: dateFormatter.date(from: "2021-02-26 11:26:30 +0000")!,
-            transitElevation: Measurement(value: 0.5816977790266835, unit: .radians),
-            distance: Measurement(value: 0.9901094623869873, unit: .astronomicalUnits)
+            set: dateFormatter.date(from: "2021-02-26 16:53:25 +0000")!,
+            transit: dateFormatter.date(from: "2021-02-26 11:26:31 +0000")!,
+            transitElevation: Measurement(value: 0.5817304606714634, unit: .radians),
+            distance: Measurement(value: 0.9900657897242581, unit: .astronomicalUnits)
         ))
     }
 
@@ -42,7 +42,7 @@ final class SunMoonCalcTests: XCTestCase {
         ))
 
         XCTAssertEqual(moon.age, 13.18057635505499)
-        XCTAssertEqual(moon.illumination, 0.9753311467809486)
+        XCTAssertEqual(moon.illumination, 0.9753177382119795)
     }
 
     func testMoonDiskOrientation() {
@@ -53,7 +53,7 @@ final class SunMoonCalcTests: XCTestCase {
 
         XCTAssertEqual(result, .init(
             axisPosition: Measurement(value: 0.337333364797035, unit: .radians),
-            brightLimb: Measurement(value: 5.252130347705917, unit: .radians),
+            brightLimb: Measurement(value: 5.252067047999782, unit: .radians),
             paralactic: Measurement(value: 0.48715374686552315, unit: .radians),
             opticalLibration: (longPass: Measurement(value: 3.8069680919395523, unit: .radians),
                                bandPass: Measurement(value: 3.8069680919395523, unit: .radians))

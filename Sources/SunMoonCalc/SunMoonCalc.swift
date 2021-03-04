@@ -12,10 +12,10 @@ let DEG_TO_RAD = 1.0 / RAD_TO_DEG
 let ARCSEC_TO_RAD = (DEG_TO_RAD / 3600.0)
 
 /// Astronomical Unit in km. As defined by JPL
-let AU: Double = 149_597_870.691
+let AU = 149_597_870.691
 
 /// Earth equatorial radius in km. IERS 2003 Conventions
-let EARTH_RADIUS: Double = 6378.1366
+let EARTH_RADIUS = 6378.1366
 
 /// Two times Pi.
 let TWO_PI = 2.0 * .pi
@@ -24,13 +24,16 @@ let TWO_PI = 2.0 * .pi
 let PI_OVER_TWO = Double.pi / 2
 
 /// Length of a sidereal day in days according to IERS Conventions
-let SIDEREAL_DAY_LENGTH: Double = 1.00273781191135448
+let SIDEREAL_DAY_LENGTH = 1.00273781191135448
 
 /// Julian century conversion constant = 100 * days per year
 let JULIAN_DAYS_PER_CENTURY: Double = 36525
 
 /// Seconds in one day
 let SECONDS_PER_DAY: Double = 86400
+
+/// Light time in days for 1 AU. DE405 definition.
+let LIGHT_TIME_DAYS_PER_AU = 0.00577551833109
 
 /// Our default epoch.
 /// The Julian Day which represents noon on 2000-01-01
@@ -502,7 +505,7 @@ class ObjectCalculation {
 class SunCalculation: ObjectCalculation {
     /// Correction to the mean ecliptic longitude
     private lazy var longitudeCorrection: Double = {
-        var c: Double = (1.9146 - 0.004817 * t - 0.000014 * t * t) * sin(anomaly)
+        var c = (1.9146 - 0.004817 * t - 0.000014 * t * t) * sin(anomaly)
         c = c + (0.019993 - 0.000101 * t) * sin(2 * anomaly)
         c = c + 0.00029 * sin(3 * anomaly)
 
@@ -522,12 +525,88 @@ class SunCalculation: ObjectCalculation {
         (357.5291 + 35999.0503 * t - 0.0001559 * t * t - 4.8e-07 * t * t * t) * DEG_TO_RAD
     }()
 
+    // Sun data from the expansion "Planetary Programs
+    // and Tables" by Pierre Bretagnon and Jean-Louis
+    // Simon, Willman-Bell, 1986
+    private static let data: [[Double]] = [
+        [403_406.0, 0.0, 4.721964, 1.621043],
+        [195_207.0, -97597.0, 5.937458, 62830.348067],
+        [119_433.0, -59715.0, 1.115589, 62830.821524],
+        [112_392.0, -56188.0, 5.781616, 62829.634302],
+        [3891.0, -1556.0, 5.5474, 125_660.5691],
+        [2819.0, -1126.0, 1.512, 125_660.9845],
+        [1721.0, -861.0, 4.1897, 62832.4766],
+        [0.0, 941.0, 1.163, 0.813],
+        [660.0, -264.0, 5.415, 125_659.31],
+        [350.0, -163.0, 4.315, 57533.85],
+        [334.0, 0.0, 4.553, -33.931],
+        [314.0, 309.0, 5.198, 777_137.715],
+        [268.0, -158.0, 5.989, 78604.191],
+        [242.0, 0.0, 2.911, 5.412],
+        [234.0, -54.0, 1.423, 39302.098],
+        [158.0, 0.0, 0.061, -34.861],
+        [132.0, -93.0, 2.317, 115_067.698],
+        [129.0, -20.0, 3.193, 15774.337],
+        [114.0, 0.0, 2.828, 5296.67],
+        [99.0, -47.0, 0.52, 58849.27],
+        [93.0, 0.0, 4.65, 5296.11],
+        [86.0, 0.0, 4.35, -3980.7],
+        [78.0, -33.0, 2.75, 52237.69],
+        [72.0, -32.0, 4.5, 55076.47],
+        [68.0, 0.0, 3.23, 261.08],
+        [64.0, -10.0, 1.22, 15773.85],
+        [46.0, -16.0, 0.14, 188_491.03],
+        [38.0, 0.0, 3.44, -7756.55],
+        [37.0, 0.0, 4.37, 264.89],
+        [32.0, -24.0, 1.14, 117_906.27],
+        [29.0, -13.0, 2.84, 55075.75],
+        [28.0, 0.0, 5.96, -7961.39],
+        [27.0, -9.0, 5.09, 188_489.81],
+        [27.0, 0.0, 1.72, 2132.19],
+        [25.0, -17.0, 2.56, 109_771.03],
+        [24.0, -11.0, 1.92, 54868.56],
+        [21.0, 0.0, 0.09, 25443.93],
+        [21.0, 31.0, 5.98, -55731.43],
+        [20.0, -10.0, 4.03, 60697.74],
+        [18.0, 0.0, 4.27, 2132.79],
+        [17.0, -12.0, 0.79, 109_771.63],
+        [14.0, 0.0, 4.24, -7752.82],
+        [13.0, -5.0, 2.01, 188_491.91],
+        [13.0, 0.0, 2.65, 207.81],
+        [13.0, 0.0, 4.98, 29424.63],
+        [12.0, 0.0, 0.93, -7.99],
+        [10.0, 0.0, 2.21, 46941.14],
+        [10.0, 0.0, 3.59, -68.29],
+        [10.0, 0.0, 1.5, 21463.25],
+        [10.0, -9.0, 2.55, 157_208.4],
+    ]
+
     override fileprivate var objectLocation: ObjectLocation {
-        let latitude: Double = 0, // Sun's ecliptic latitude is always negligible
-            ecc: Double = 0.016708617 - 4.2037e-05 * t - 1.236e-07 * t * t, // Eccentricity
-            v: Double = anomaly + longitudeCorrection * DEG_TO_RAD, // True anomaly
-            sdistance: Double = 1.000001018 * (1 - ecc * ecc) / (1 + ecc * cos(v)) // In UA
-        return (latitude * DEG_TO_RAD, longitude * DEG_TO_RAD, sdistance, atan(696_000 / (AU * sdistance)))
+        var L = 0.0, R = 0.0, t2 = t * 0.01
+        var Lp = 0.0, deltat = 0.5, t2p = (t + deltat / JULIAN_DAYS_PER_CENTURY) * 0.01
+        for elements in Self.data {
+            let v = elements[2] + elements[3] * t2
+            let u = normalizeRadians(v)
+            L = L + elements[0] * sin(u)
+            R = R + elements[1] * cos(u)
+
+            let vp = elements[2] + elements[3] * t2p
+            let up = normalizeRadians(vp)
+            Lp = Lp + elements[0] * sin(up)
+        }
+
+        var lon = normalizeRadians(4.9353929 + normalizeRadians(62833.196168 * t2) + L / 10_000_000.0) * RAD_TO_DEG
+        let distance = 1.0001026 + R / 10_000_000.0
+
+        // Now subtract aberration
+        let dlon = ((Lp - L) / 10_000_000.0 + 62833.196168 * (t2p - t2)) / deltat
+        let aberration = dlon * distance * LIGHT_TIME_DAYS_PER_AU
+        lon -= aberration * RAD_TO_DEG
+
+        let longitude = lon * DEG_TO_RAD // apparent longitude (error<0.001 deg)
+        let latitude: Double = 0 // Sun's ecliptic latitude is always negligible
+
+        return (latitude, longitude, distance, atan(Body.sun.eqRadius / (AU * distance)))
     }
 }
 
