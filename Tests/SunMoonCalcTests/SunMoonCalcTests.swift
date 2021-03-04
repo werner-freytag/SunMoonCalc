@@ -37,7 +37,7 @@ final class SunMoonCalcTests: XCTestCase {
             rise: dateFormatter.date(from: "2021-02-26 15:44:03 +0000")!,
             set: dateFormatter.date(from: "2021-02-26 06:02:31 +0000")!,
             transit: dateFormatter.date(from: "2021-02-26 23:14:56 +0000")!,
-            transitElevation: Measurement(value: 0.9802614034088709, unit: .radians),
+            transitElevation: Measurement(value: 0.980261403394202, unit: .radians),
             distance: Measurement(value: 0.0024798996480156228, unit: .astronomicalUnits)
         ))
 

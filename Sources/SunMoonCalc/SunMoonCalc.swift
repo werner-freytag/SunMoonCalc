@@ -269,7 +269,7 @@ class ObjectCalculation {
 
     fileprivate lazy var t = jd.timeFactor
 
-    fileprivate class var accuracyIterationsOfRiseSetTransit: Int { 3 }
+    private class var accuracyIterationsOfRiseSetTransit: Int { 15 }
 
     fileprivate var objectLocation: ObjectLocation {
         preconditionFailure("Must be implemented in child classes")
@@ -496,8 +496,6 @@ class SunCalculation: ObjectCalculation {
 }
 
 class MoonCalculation: ObjectCalculation {
-    override class var accuracyIterationsOfRiseSetTransit: Int { 5 }
-
     private lazy var sun = SunCalculation(jd: jd, obsLat: obsLat, obsLon: obsLon, twilight: twilight)
 
     // Anomalistic phase
