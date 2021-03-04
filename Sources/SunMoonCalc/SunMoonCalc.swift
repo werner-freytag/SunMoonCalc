@@ -185,19 +185,19 @@ struct EphemerisData {
 }
 
 class JulianDate {
-    let julianDays: Double
+    let jd: Double
 
     lazy var date: Date = {
-        let timeInterval = (julianDays + 0.5 - J1970) * SECONDS_PER_DAY
+        let timeInterval = (jd + 0.5 - J1970) * SECONDS_PER_DAY
         return Date(timeIntervalSince1970: timeInterval)
     }()
 
-    init(_ julianDays: Double) {
-        self.julianDays = julianDays
+    init(_ jd: Double) {
+        self.jd = jd
     }
 
     init(date: Date) {
-        julianDays = date.timeIntervalSince1970 / SECONDS_PER_DAY - 0.5 + J1970
+        jd = date.timeIntervalSince1970 / SECONDS_PER_DAY - 0.5 + J1970
         self.date = date
     }
 
@@ -206,27 +206,41 @@ class JulianDate {
         calendar.timeZone = TimeZone(abbreviation: "UTC")!
         let dc = calendar.dateComponents([.year, .month, .day], from: date)
 
-        guard let year = dc.year, let month = dc.month, let day = dc.day, year > -600, year < 2200 else { return 0 }
+        let year = Double(dc.year!), month = Double(dc.month!), day = Double(dc.day!)
 
-        let x = Double(year) + (Double(month) - 1 + Double(day) / 30) / 12
-        let x2 = x * x, x3 = x2 * x, x4 = x3 * x
-        if year < 1600 {
-            return 10535.328003326353 - 9.995238627481024 * x + 0.003067307630020489 * x2 - 7.76340698361363e-6 * x3 + 3.1331045394223196e-9 * x4 +
-                8.225530854405553e-12 * x2 * x3 - 7.486164715632051e-15 * x4 * x2 + 1.9362461549678834e-18 * x4 * x3 - 8.489224937827653e-23 * x4 * x4
+        var TTMinusUT: Double = 0
+        let ndot = -25.858
+        var c0 = 0.91072 * (ndot + 26.0)
+        if year < -500 || year >= 2200 {
+            let u = (jd - 2_385_800.5) / 36525.0 // centuries since J1820
+            TTminusUT = -20 + 32.0 * u * u
+        } else {
+            let x = year + (month - 1 + (day - 1) / 30.0) / 12.0
+            let x2 = x * x, x3 = x2 * x, x4 = x3 * x
+            if year < 1600 {
+                TTminusUT = 10535.328003 - 9.9952386275 * x + 0.00306730763 * x2 - 7.7634069836e-6 * x3 + 3.1331045394e-9 * x4 +
+                    8.2255308544e-12 * x2 * x3 - 7.4861647156e-15 * x4 * x2 + 1.936246155e-18 * x4 * x3 - 8.4892249378e-23 * x4 * x4
+            } else {
+                TTminusUT = -1_027_175.34776 + 2523.2566254 * x - 1.8856868491 * x2 + 5.8692462279e-5 * x3 + 3.3379295816e-7 * x4 +
+                    1.7758961671e-10 * x2 * x3 - 2.7889902806e-13 * x2 * x4 + 1.0224295822e-16 * x3 * x4 - 1.2528102371e-20 * x4 * x4
+            }
+            c0 = 0.91072 * (ndot + 25.858)
         }
 
-        return -1_027_175.3477559977 + 2523.256625418965 * x - 1.885686849058459 * x2 + 5.869246227888417e-5 * x3 + 3.3379295816475025e-7 * x4 +
-            1.7758961671447929e-10 * x2 * x3 - 2.7889902806153024e-13 * x2 * x4 + 1.0224295822336825e-16 * x3 * x4 - 1.2528102370680435e-20 * x4 * x4
+        let c = -c0 * pow((jd - 2_435_109.0) / 36525.0, 2)
+        if year < 1955 || year > 2005 { TTminusUT += c }
+
+        return TTMinusUT
     }()
 
     lazy var timeFactor: Double = {
-        (julianDays + TTminusUT / SECONDS_PER_DAY - J2000) / JULIAN_DAYS_PER_CENTURY
+        (jd + TTminusUT / SECONDS_PER_DAY - J2000) / JULIAN_DAYS_PER_CENTURY
     }()
 }
 
 extension Double {
     init(_ jd: JulianDate) {
-        self = jd.julianDays
+        self = jd.jd
     }
 }
 
