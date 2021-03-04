@@ -1,7 +1,5 @@
 import Foundation
 
-/// Original Java code: http://conga.oan.es/~alonso/doku.php?id=blog:sun_moon_position
-
 /** Radians to degrees. */
 let RAD_TO_DEG = 180.0 / .pi
 
