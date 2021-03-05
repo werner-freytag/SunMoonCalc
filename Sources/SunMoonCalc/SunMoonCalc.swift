@@ -732,7 +732,7 @@ class MoonCalculation: ObjectCalculation {
 
     // Get accurate Moon age
     var age: Double {
-        normalizeRadians(objectLocation.longitude - sun.longitude) * LUNAR_CYCLE_DAYS / TWO_PI
+        normalizeRadians(objectLocation.longitude - sun.objectLocation.longitude) * LUNAR_CYCLE_DAYS / TWO_PI
     }
 
     lazy var illumination: Double = {

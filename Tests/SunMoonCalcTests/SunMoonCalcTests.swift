@@ -41,7 +41,7 @@ final class SunMoonCalcTests: XCTestCase {
             distance: Measurement(value: 0.002479871337300747, unit: .astronomicalUnits)
         ))
 
-        XCTAssertEqual(moon.age, 13.1775849881569)
+        XCTAssertEqual(moon.age, 13.325133319225687)
         XCTAssertEqual(moon.illumination, 0.9753461326608158)
     }
 
