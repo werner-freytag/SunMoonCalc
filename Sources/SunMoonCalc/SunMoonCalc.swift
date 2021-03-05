@@ -185,24 +185,6 @@ public struct Ephemeris {
     public let distance: Measurement<UnitLength>
 }
 
-/// Reduce an angle in radians to the range (0 - 2 Pi)
-/// - Parameter r: Angle in radians
-/// - Returns: Reduced angle in radians
-func normalizeRadians(_ r: Double) -> Double {
-    switch r {
-    case ..<(-TWO_PI):
-        return r + TWO_PI * (floor(-r / TWO_PI) + 1)
-    case -TWO_PI ..< 0:
-        return r + TWO_PI
-    case 0 ..< TWO_PI:
-        return r
-    case TWO_PI ..< (4 * .pi):
-        return r - TWO_PI
-    default:
-        return r - TWO_PI * floor(r / TWO_PI)
-    }
-}
-
 struct EphemerisData {
     /// azimuth (radians)
     let azimuth: Double
