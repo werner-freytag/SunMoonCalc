@@ -31,48 +31,57 @@ extension MoonCalculation {
         let lst = sunCalculation.localApparentSiderealTime
         let sunRA = sunData.rightAscension
         let sunDec = sunData.declination
-        let moonLon = moonData.azimuth * DEG_TO_RAD
-        let moonLat = moonData.elevation * DEG_TO_RAD
+        let moonLon = objectLocation.longitude
+        let moonLat = objectLocation.latitude
         let moonRA = moonData.rightAscension
         let moonDec = moonData.declination
 
         let t = jd.t
 
+        // Obliquity of ecliptic
+        let eps = meanObliquity + nutation.obl
+
         // Moon's argument of latitude
-        let F = (93.2720993 + 483_202.0175273 * t - 0.0034029 * t * t - t * t * t / 3_526_000 + t * t * t * t / 863_310_000) * DEG_TO_RAD
+        let F = (93.2720993 + 483_202.0175273 * t - 0.0034029 * t * t - t * t * t / 3_526_000.0 + t * t * t * t / 863_310_000.0) * DEG_TO_RAD
 
         // Moon's inclination
         let I = 1.54242 * DEG_TO_RAD
 
         // Moon's mean ascending node longitude
-        let omega = (125.0445550 - 1934.1361849 * t + 0.0020762 * t * t + t * t * t / 467_410 - t * t * t * t / 18_999_000) * DEG_TO_RAD
+        let omega = (125.0445550 - 1934.1361849 * t + 0.0020762 * t * t + t * t * t / 467_410.0 - t * t * t * t / 18_999_000.0) * DEG_TO_RAD
 
-        // Obliquity of ecliptic (approx, better formulae up)
-        let eps = 23.43929 * DEG_TO_RAD
+        let cosI = cos(I), sinI = sin(I)
+        let cosMoonLat = cos(moonLat), sinMoonLat = sin(moonLat)
+        let cosMoonDec = cos(moonDec), sinMoonDec = sin(moonDec)
 
         // Obtain optical librations lp and bp
-        let W = moonLon - omega,
-            sinA = sin(W) * cos(moonLat) * cos(I) - sin(moonLat) * sin(I),
-            cosA = cos(W) * cos(moonLat),
-            A = atan2(sinA, cosA),
-            lp = normalizeRadians(A - F),
-            sinbp = -sin(W) * cos(moonLat) * sin(I) - sin(moonLat) * cos(I),
-            bp = asin(sinbp)
+        let W = moonLon - omega
+        let sinA = sin(W) * cosMoonLat * cosI - sinMoonLat * sinI
+        let cosA = cos(W) * cosMoonLat
+        let A = atan2(sinA, cosA)
+        let lp = normalizeRadians(A - F)
+        let sinbp = -sin(W) * cosMoonLat * sinI - sinMoonLat * cosI
+        let bp = asin(sinbp)
 
         // Obtain position angle of axis p
-        var x = sin(I) * sin(omega),
-            y = sin(I) * cos(omega) * cos(eps) - cos(I) * sin(eps)
-        let w = atan2(x, y),
-            sinp = sqrt(x * x + y * y) * cos(moonRA - w) / cos(bp),
-            p = asin(sinp)
+        var x = sinI * sin(omega)
+        var y = sinI * cos(omega) * cos(eps) - cosI * sin(eps)
+        let w = atan2(x, y)
+        let sinp = hypot(x, y) * cos(moonRA - w) / cos(bp)
+        let p = asin(sinp)
 
         // Compute bright limb angle bl
-        let bl = (Double.pi + atan2(cos(sunDec) * sin(moonRA - sunRA), cos(sunDec) * sin(moonDec) * cos(moonRA - sunRA) - sin(sunDec) * cos(moonDec)))
+        let bl = (.pi + atan2(cos(sunDec) * sin(moonRA - sunRA), cos(sunDec) * sinMoonDec * cos(moonRA - sunRA) - sin(sunDec) * cosMoonDec))
 
         // Paralactic angle par
         y = sin(lst - moonRA)
-        x = tan(obsLat) * cos(moonDec) - sin(moonDec) * cos(lst - moonRA)
-        let par: Double = x != 0 ? atan2(y, x) : (y / abs(y)) * Double.pi / 2
+        x = tan(obsLat) * cosMoonDec - sinMoonDec * cos(lst - moonRA)
+        var par = 0.0
+        if x != 0.0 {
+            par = atan2(y, x)
+        } else {
+            par = (y / abs(y)) * PI_OVER_TWO
+        }
 
         return .init(
             axisPosition: .init(value: p, unit: .radians), brightLimb: .init(value: bl, unit: .radians), paralactic: .init(value: par, unit: .radians),

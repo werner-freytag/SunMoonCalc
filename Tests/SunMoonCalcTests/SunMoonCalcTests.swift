@@ -52,11 +52,11 @@ final class SunMoonCalcTests: XCTestCase {
         let result = Moon(location: location, date: date).diskOrientationAngles
 
         XCTAssertEqual(result, .init(
-            axisPosition: Measurement(value: 0.33737966865295616, unit: .radians),
+            axisPosition: Measurement(value: 0.3391984841184668, unit: .radians),
             brightLimb: Measurement(value: 5.252281717032904, unit: .radians),
             paralactic: Measurement(value: 0.48687916720474905, unit: .radians),
-            opticalLibration: (longPass: Measurement(value: 3.80676880991291, unit: .radians),
-                               bandPass: Measurement(value: 0.0089683662835753, unit: .radians))
+            opticalLibration: (longPass: Measurement(value: 6.182599205266342, unit: .radians),
+                               bandPass: Measurement(value: -0.10274916497635754, unit: .radians))
         ))
     }
 }

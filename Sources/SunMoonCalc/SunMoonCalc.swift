@@ -274,7 +274,7 @@ extension Double {
     }
 }
 
-private typealias ObjectLocation = (latitude: Double, longitude: Double, distance: Double, angularRadius: Double)
+typealias ObjectLocation = (latitude: Double, longitude: Double, distance: Double, angularRadius: Double)
 
 class ObjectCalculation {
     /// INPUT VARIABLES
@@ -304,7 +304,7 @@ class ObjectCalculation {
 
     private class var accuracyIterationsOfRiseSetTransit: Int { 15 }
 
-    fileprivate var objectLocation: ObjectLocation {
+    var objectLocation: ObjectLocation {
         preconditionFailure("Must be implemented in child classes")
     }
 
@@ -617,7 +617,7 @@ class SunCalculation: ObjectCalculation {
         [10.0, -9.0, 2.55, 157_208.4],
     ]
 
-    override fileprivate var objectLocation: ObjectLocation {
+    override var objectLocation: ObjectLocation {
         var L = 0.0, R = 0.0, t2 = t * 0.01
         var Lp = 0.0, deltat = 0.5, t2p = (t + deltat / JULIAN_DAYS_PER_CENTURY) * 0.01
         for elements in Self.data {
@@ -654,7 +654,7 @@ class MoonCalculation: ObjectCalculation {
         (134.9634114 + 477_198.8676313 * t + 0.008997 * t * t + t * t * t / 69699 - t * t * t * t / 14_712_000) * DEG_TO_RAD
     }()
 
-    override fileprivate var objectLocation: ObjectLocation {
+    override var objectLocation: ObjectLocation {
         // These expansions up to t^7 for the mean elements are taken from S. L. Moshier, see program cmoon
         /* Mean elongation of moon = D */
         var x = (1.6029616009939659e+09 * t + 1.0722612202445078e+06)
