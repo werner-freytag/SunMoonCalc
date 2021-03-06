@@ -36,5 +36,5 @@ public enum MoonPhase {
 }
 
 public extension Moon {
-    var phase: MoonPhase { MoonPhase(age: age)! }
+    var phase: MoonPhase { MoonPhase(age: phaseAge)! }
 }

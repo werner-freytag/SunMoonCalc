@@ -155,11 +155,13 @@ public class Moon {
 
     public lazy var ephemeris: Ephemeris = { .init(data: calculation.ephemerisData) }()
 
-    /// Age (days: 0-29.5)
-    public lazy var age: Double = { calculation.age }()
-
     /// Illumination (percentage)
     public lazy var illumination: Double = { calculation.illumination }()
+
+    /// Age (days: 0-29.5)
+    public lazy var phaseAge: Double = { calculation.age }()
+
+    public static let maxPhaseAge = LUNAR_CYCLE_DAYS
 }
 
 public struct Ephemeris {

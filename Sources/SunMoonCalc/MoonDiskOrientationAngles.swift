@@ -108,7 +108,7 @@ public struct ViewingAngles {
 public extension Moon {
     var diskOrientationViewingAngles: ViewingAngles {
         .init(
-            phase: Measurement(value: acos(-cos(age / LUNAR_CYCLE_DAYS * 2 * .pi)), unit: .radians).converted(to: .degrees),
+            phase: Measurement(value: acos(-cos(phaseAge / LUNAR_CYCLE_DAYS * 2 * .pi)), unit: .radians).converted(to: .degrees),
             moon: (-1 * (diskOrientationAngles.brightLimb - diskOrientationAngles.paralactic)).converted(to: .degrees),
             shadow: (-1 * (diskOrientationAngles.axisPosition - diskOrientationAngles.paralactic)).converted(to: .degrees)
         )
