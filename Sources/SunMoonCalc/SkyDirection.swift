@@ -1,4 +1,5 @@
 import Foundation
+import SwiftToolbox
 
 public enum SkyDirection: CaseIterable {
     case N, NNE, NE, ENE, E, ESE, SE, SSE, S, SSW, SW, WSW, W, WNW, NW, NNW

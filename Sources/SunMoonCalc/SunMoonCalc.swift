@@ -1,4 +1,5 @@
 import Foundation
+import SwiftToolbox
 
 /** Radians to degrees. */
 let RAD_TO_DEG = 180.0 / .pi
