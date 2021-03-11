@@ -111,17 +111,19 @@ enum Body {
     var eqRadius: Double { Self.dataMapping[self]!.eqRadius }
 }
 
-public struct Location {
-    let latitude: Measurement<UnitAngle>
-    let longitude: Measurement<UnitAngle>
+public typealias LocationDegrees = Double
 
-    public init(latitude: Measurement<UnitAngle>, longitude: Measurement<UnitAngle>) {
+public struct Location {
+    let latitude: LocationDegrees
+    let longitude: LocationDegrees
+
+    public init(latitude: LocationDegrees, longitude: LocationDegrees) {
         self.latitude = latitude
         self.longitude = longitude
     }
 
-    public init(_ latitude: Double, _ longitude: Double) {
-        self.init(latitude: .init(value: latitude, unit: .degrees), longitude: .init(value: longitude, unit: .degrees))
+    public init(_ latitude: LocationDegrees, _ longitude: LocationDegrees) {
+        self.init(latitude: latitude, longitude: longitude)
     }
 }
 
@@ -297,8 +299,8 @@ class ObjectCalculation {
 
     required init(date: Date, location: Location, twilight: Twilight = .horizon34arcmin, twilightMode: TwilightMode) {
         jd = JulianDate(date: date)
-        obsLon = location.longitude.converted(to: .radians).value
-        obsLat = location.latitude.converted(to: .radians).value
+        obsLon = location.longitude * DEG_TO_RAD
+        obsLat = location.latitude * DEG_TO_RAD
         self.twilight = twilight
         self.twilightMode = twilightMode
     }
