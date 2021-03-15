@@ -38,5 +38,5 @@ public extension Moon {
 }
 
 public extension Moon {
-    var phase: Phase { .init(age: phaseAge)! }
+    var phase: Phase { Phase(age: phaseAge)! }
 }
