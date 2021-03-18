@@ -1,4 +1,5 @@
 import Foundation
+import SwiftToolbox
 
 /** Radians to degrees. */
 let RAD_TO_DEG = 180.0 / .pi
@@ -110,17 +111,19 @@ enum Body {
     var eqRadius: Double { Self.dataMapping[self]!.eqRadius }
 }
 
-public struct Location {
-    let latitude: Measurement<UnitAngle>
-    let longitude: Measurement<UnitAngle>
+public typealias LocationDegrees = Double
 
-    init(latitude: Measurement<UnitAngle>, longitude: Measurement<UnitAngle>) {
+public struct Location {
+    let latitude: LocationDegrees
+    let longitude: LocationDegrees
+
+    public init(latitude: LocationDegrees, longitude: LocationDegrees) {
         self.latitude = latitude
         self.longitude = longitude
     }
 
-    init(_ latitude: Double, _ longitude: Double) {
-        self.init(latitude: .init(value: latitude, unit: .degrees), longitude: .init(value: longitude, unit: .degrees))
+    public init(_ latitude: LocationDegrees, _ longitude: LocationDegrees) {
+        self.init(latitude: latitude, longitude: longitude)
     }
 }
 
@@ -131,13 +134,13 @@ public class Sun {
     ///   - location: Location of observation
     ///   - twilight: twilight configuration
     ///   - twilightMode: twilight mode
-    init(location: Location, date: Date = .init(), twilight: Twilight = .horizon34arcmin, twilightMode: TwilightMode = .todayUT) {
+    public init(location: Location, date: Date = .init(), twilight: Twilight = .horizon34arcmin, twilightMode: TwilightMode = .todayUT) {
         calculation = .init(date: date, location: location, twilight: twilight, twilightMode: twilightMode)
     }
 
     let calculation: SunCalculation
 
-    lazy var ephemeris: Ephemeris = { .init(data: calculation.ephemerisData) }()
+    public lazy var ephemeris: Ephemeris = { .init(data: calculation.ephemerisData) }()
 }
 
 public class Moon {
@@ -147,60 +150,44 @@ public class Moon {
     ///   - location: Location of observation
     ///   - twilight: twilight configuration
     ///   - twilightMode: twilight mode
-    init(location: Location, date: Date = .init(), twilight: Twilight = .horizon34arcmin, twilightMode: TwilightMode = .todayUT) {
+    public init(location: Location, date: Date = .init(), twilight: Twilight = .horizon34arcmin, twilightMode: TwilightMode = .todayUT) {
         calculation = .init(date: date, location: location, twilight: twilight, twilightMode: twilightMode)
     }
 
     let calculation: MoonCalculation
 
-    lazy var ephemeris: Ephemeris = { .init(data: calculation.ephemerisData) }()
-
-    /// Age (days: 0-29.5)
-    lazy var age: Double = { calculation.age }()
+    public lazy var ephemeris: Ephemeris = { .init(data: calculation.ephemerisData) }()
 
     /// Illumination (percentage)
-    lazy var illumination: Double = { calculation.illumination }()
+    public lazy var illumination: Double = { calculation.illumination }()
+
+    /// Age (days: 0-29.5)
+    public lazy var phaseAge: Double = { calculation.age }()
+
+    public static let maxPhaseAge = LUNAR_CYCLE_DAYS
 }
 
 public struct Ephemeris {
     /// Azimuth (radians)
-    let azimuth: Measurement<UnitAngle>
+    public let azimuth: Measurement<UnitAngle>
 
     /// Elevation (radians)
-    let elevation: Measurement<UnitAngle>
+    public let elevation: Measurement<UnitAngle>
 
     /// Rise (Julian days as per UTC)
-    let rise: Date?
+    public let rise: Date?
 
     /// Set (Date per UTC)
-    let set: Date?
+    public let set: Date?
 
     /// Transit (Date per UTC)
-    let transit: Date?
+    public let transit: Date?
 
     /// Transit elevation (radians)
-    let transitElevation: Measurement<UnitAngle>
+    public let transitElevation: Measurement<UnitAngle>
 
     /// Sun distance (AUs)
-    let distance: Measurement<UnitLength>
-}
-
-/// Reduce an angle in radians to the range (0 - 2 Pi)
-/// - Parameter r: Angle in radians
-/// - Returns: Reduced angle in radians
-func normalizeRadians(_ r: Double) -> Double {
-    switch r {
-    case ..<(-TWO_PI):
-        return r + TWO_PI * (floor(-r / TWO_PI) + 1)
-    case -TWO_PI ..< 0:
-        return r + TWO_PI
-    case 0 ..< TWO_PI:
-        return r
-    case TWO_PI ..< (4 * .pi):
-        return r - TWO_PI
-    default:
-        return r - TWO_PI * floor(r / TWO_PI)
-    }
+    public let distance: Measurement<UnitLength>
 }
 
 struct EphemerisData {
@@ -256,7 +243,7 @@ class JulianDate {
 
         let year = Double(dc.year!), month = Double(dc.month!), day = Double(dc.day!)
 
-        var TTMinusUT: Double = 0
+        var TTminusUT: Double = 0
         let ndot = -25.858
         var c0 = 0.91072 * (ndot + 26.0)
         if year < -500 || year >= 2200 {
@@ -278,7 +265,7 @@ class JulianDate {
         let c = -c0 * pow((jd - 2_435_109.0) / 36525.0, 2)
         if year < 1955 || year > 2005 { TTminusUT += c }
 
-        return TTMinusUT
+        return TTminusUT
     }()
 
     lazy var t: Double = {
@@ -292,7 +279,7 @@ extension Double {
     }
 }
 
-private typealias ObjectLocation = (latitude: Double, longitude: Double, distance: Double, angularRadius: Double)
+typealias ObjectLocation = (latitude: Double, longitude: Double, distance: Double, angularRadius: Double)
 
 class ObjectCalculation {
     /// INPUT VARIABLES
@@ -312,8 +299,8 @@ class ObjectCalculation {
 
     required init(date: Date, location: Location, twilight: Twilight = .horizon34arcmin, twilightMode: TwilightMode) {
         jd = JulianDate(date: date)
-        obsLon = location.longitude.converted(to: .radians).value
-        obsLat = location.latitude.converted(to: .radians).value
+        obsLon = location.longitude * DEG_TO_RAD
+        obsLat = location.latitude * DEG_TO_RAD
         self.twilight = twilight
         self.twilightMode = twilightMode
     }
@@ -322,7 +309,7 @@ class ObjectCalculation {
 
     private class var accuracyIterationsOfRiseSetTransit: Int { 15 }
 
-    fileprivate var objectLocation: ObjectLocation {
+    var objectLocation: ObjectLocation {
         preconditionFailure("Must be implemented in child classes")
     }
 
@@ -635,7 +622,7 @@ class SunCalculation: ObjectCalculation {
         [10.0, -9.0, 2.55, 157_208.4],
     ]
 
-    override fileprivate var objectLocation: ObjectLocation {
+    override var objectLocation: ObjectLocation {
         var L = 0.0, R = 0.0, t2 = t * 0.01
         var Lp = 0.0, deltat = 0.5, t2p = (t + deltat / JULIAN_DAYS_PER_CENTURY) * 0.01
         for elements in Self.data {
@@ -672,7 +659,7 @@ class MoonCalculation: ObjectCalculation {
         (134.9634114 + 477_198.8676313 * t + 0.008997 * t * t + t * t * t / 69699 - t * t * t * t / 14_712_000) * DEG_TO_RAD
     }()
 
-    override fileprivate var objectLocation: ObjectLocation {
+    override var objectLocation: ObjectLocation {
         // These expansions up to t^7 for the mean elements are taken from S. L. Moshier, see program cmoon
         /* Mean elongation of moon = D */
         var x = (1.6029616009939659e+09 * t + 1.0722612202445078e+06)
@@ -750,11 +737,11 @@ class MoonCalculation: ObjectCalculation {
 
     // Get accurate Moon age
     var age: Double {
-        normalizeRadians(objectLocation.longitude - sun.longitude) * LUNAR_CYCLE_DAYS / TWO_PI
+        normalizeRadians(objectLocation.longitude - sun.objectLocation.longitude) * LUNAR_CYCLE_DAYS / TWO_PI
     }
 
     lazy var illumination: Double = {
-        let sun = sun.ephemerisData
+        let sun = self.sun.ephemerisData
         let moon = ephemerisData
 
         return (1 - cos(acos(sin(sun.declination) * sin(moon.declination) + cos(sun.declination) * cos(moon.declination) * cos(moon.rightAscension - sun.rightAscension)))) * 0.5

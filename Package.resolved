@@ -1,0 +1,16 @@
+{
+  "object": {
+    "pins": [
+      {
+        "package": "SwiftToolbox",
+        "repositoryURL": "https://github.com/werner-freytag/SwiftToolbox.git",
+        "state": {
+          "branch": "develop",
+          "revision": "f475f63b75619d32fb55137eda8a7f33e3915e04",
+          "version": null
+        }
+      }
+    ]
+  },
+  "version": 1
+}
