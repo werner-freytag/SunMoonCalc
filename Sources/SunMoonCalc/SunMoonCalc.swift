@@ -73,11 +73,8 @@ public enum TwilightMode {
     /// Closest events.
     case closest
 
-    /// Compute events for the current date in UT
-    case todayUT
-
-    /// Compute events for the current date in local time
-    case todayLT(timezone: Double)
+    /// Compute events for the current date
+    case today(timezone: TimeZone = .current)
 }
 
 /// The set of bodies to compute ephemerides.
@@ -134,7 +131,7 @@ public class Sun {
     ///   - location: Location of observation
     ///   - twilight: twilight configuration
     ///   - twilightMode: twilight mode
-    public init(location: Location, date: Date = .init(), twilight: Twilight = .horizon34arcmin, twilightMode: TwilightMode = .todayUT) {
+    public init(location: Location, date: Date = .init(), twilight: Twilight = .horizon34arcmin, twilightMode: TwilightMode = .today(timezone: .current)) {
         calculation = .init(date: date, location: location, twilight: twilight, twilightMode: twilightMode)
     }
 
@@ -150,7 +147,7 @@ public class Moon {
     ///   - location: Location of observation
     ///   - twilight: twilight configuration
     ///   - twilightMode: twilight mode
-    public init(location: Location, date: Date = .init(), twilight: Twilight = .horizon34arcmin, twilightMode: TwilightMode = .todayUT) {
+    public init(location: Location, date: Date = .init(), twilight: Twilight = .horizon34arcmin, twilightMode: TwilightMode = .today(timezone: .init(secondsFromGMT: 0)!)) {
         calculation = .init(date: date, location: location, twilight: twilight, twilightMode: twilightMode)
     }
 
@@ -238,7 +235,7 @@ class JulianDate {
 
     private lazy var TTminusUT: Double = {
         var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(abbreviation: "UTC")!
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
         let dc = calendar.dateComponents([.year, .month, .day], from: date)
 
         let year = Double(dc.year!), month = Double(dc.month!), day = Double(dc.day!)
@@ -362,22 +359,16 @@ class ObjectCalculation {
 
     private func getTwilightEvent(celestialHoursToEarthTime: Double, rightAscension: Double, angularHour: Double) -> Double {
         let jd_UT = Double(jd)
-        let jdToday_UT = floor(jd_UT - 0.5) + 0.5
 
         var eventTime = celestialHoursToEarthTime * normalizeRadians(rightAscension + angularHour - localApparentSiderealTime)
         let eventTimePrev = eventTime - celestialHoursToEarthTime * TWO_PI
-        let eventDatePrev_UT = floor(jd_UT + eventTimePrev - 0.5) + 0.5
 
         switch twilightMode {
         case .closest where abs(eventTimePrev) < abs(eventTime):
             eventTime = eventTimePrev
-        case .todayUT:
-            let eventDate_UT = floor(jd_UT + eventTime - 0.5) + 0.5
-            if jdToday_UT != eventDate_UT { eventTime = -jd_UT - 1 }
-            if jdToday_UT == eventDatePrev_UT { eventTime = eventTimePrev }
 
-        case let .todayLT(timezone):
-            let tz = timezone / 24.0, jdToday_LT = floor(jd_UT + tz - 0.5) + 0.5
+        case let .today(timezone):
+            let tz = Double(timezone.secondsFromGMT()) / 60 / 60 / 24, jdToday_LT = floor(jd_UT + tz - 0.5) + 0.5
             let eventDate_LT = floor(jd_UT + tz + eventTime - 0.5) + 0.5
             if jdToday_LT != eventDate_LT { eventTime = -jd_UT - 1 }
 
